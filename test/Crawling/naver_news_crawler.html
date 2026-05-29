@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>서울교통공사 뉴스 크롤러</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #F4F2ED;
+    --surface: #FFFFFF;
+    --surface2: #F9F8F5;
+    --border: #E0DCD4;
+    --border2: #CBC7BF;
+    --text: #1C1B18;
+    --text2: #6B6860;
+    --text3: #9E9B93;
+    --accent: #1A56DB;
+    --accent-bg: #EBF2FF;
+    --accent-border: #BFDBFE;
+    --green: #16A34A;
+    --green-bg: #F0FDF4;
+    --green-border: #BBF7D0;
+    --red: #DC2626;
+    --red-bg: #FFF5F5;
+    --red-border: #FECACA;
+    --amber: #D97706;
+    --amber-bg: #FFFBEB;
+    --amber-border: #FDE68A;
+    --tag-bg: #EEECEA;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.10);
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── 헤더 ── */
+  .top-bar {
+    background: var(--surface);
+    border-bottom: 1.5px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 200;
+    flex-shrink: 0;
+  }
+
+  .top-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .pulse-ring {
+    position: relative;
+    width: 12px; height: 12px;
+  }
+  .pulse-ring::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .pulse-ring.inactive::before { background: var(--text3); animation: none; }
+  .pulse-ring.paused::before { background: #D97706; animation: none; }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(0.8); opacity: 0.5; }
+  }
+
+  .app-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+    color: var(--text);
+  }
+
+  .top-clock {
+    font-size: 13px;
+    color: var(--text2);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+  }
+
+  .top-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1.5px solid var(--border2);
+    background: var(--surface);
+    color: var(--text2);
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--surface2); border-color: var(--text3); color: var(--text); }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .btn.primary:hover { background: #1346B7; border-color: #1346B7; }
+  .btn.danger { color: var(--red); border-color: var(--red-border); background: var(--red-bg); }
+  .btn.danger:hover { background: #FECACA; }
+  .btn.pause-btn { color: #D97706; border-color: #FDE68A; background: #FFFBEB; }
+  .btn.pause-btn:hover { background: #FEF3C7; }
+  .btn.resume-btn { color: var(--green); border-color: var(--green-border); background: var(--green-bg); }
+  .btn.resume-btn:hover { background: #DCFCE7; }
+  .btn.green { color: var(--green); border-color: var(--green-border); background: var(--green-bg); }
+  .btn.green:hover { background: #DCFCE7; }
+  .btn.icon-only { padding: 7px 9px; }
+  .btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ── 레이아웃 ── */
+  .main-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  /* ── 사이드바 ── */
+  .sidebar {
+    width: 300px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1.5px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .sidebar-section {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 10px;
+  }
+
+  /* API 설정 */
+  .api-input-wrap {
+    position: relative;
+  }
+  .api-input {
+    width: 100%;
+    padding: 9px 38px 9px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+    background: var(--surface2);
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    transition: border-color 0.15s;
+    letter-spacing: 0.5px;
+  }
+  .api-input:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+  .api-input.valid { border-color: var(--green); }
+  .api-input.invalid { border-color: var(--red); }
+
+  .api-status-icon {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px;
+  }
+
+  .api-hint {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text3);
+    line-height: 1.5;
+  }
+  .api-hint a { color: var(--accent); text-decoration: none; }
+  .api-hint a:hover { text-decoration: underline; }
+
+  /* 키워드 목록 */
+  .kw-list-wrap {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  }
+
+  .kw-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    background: var(--surface2);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .kw-card:hover { border-color: var(--border2); box-shadow: var(--shadow); }
+  .kw-card.main-kw { border-color: var(--accent-border); background: var(--accent-bg); }
+  .kw-card.crawling-now { border-color: var(--green-border); }
+
+  .kw-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .kw-name-display {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .kw-name-display.main { color: var(--accent); }
+
+  .kw-name-input {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1.5px solid var(--accent);
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    background: var(--surface);
+    display: none;
+  }
+  .kw-name-input:focus { outline: none; }
+
+  .badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 20px;
+    flex-shrink: 0;
+  }
+  .badge.main { background: var(--accent); color: #fff; }
+  .badge.sub { background: var(--tag-bg); color: var(--text2); }
+
+  .kw-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .icon-btn {
+    width: 24px; height: 24px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text2);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .icon-btn:hover { background: var(--bg); border-color: var(--border2); color: var(--text); }
+  .icon-btn.del:hover { background: var(--red-bg); border-color: var(--red-border); color: var(--red); }
+  .icon-btn.confirm:hover { background: var(--green-bg); border-color: var(--green-border); color: var(--green); }
+  .icon-btn svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .kw-meta {
+    font-size: 11px;
+    color: var(--text3);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .kw-interval-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .interval-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .interval-dec, .interval-inc {
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text2);
+    line-height: 1;
+    font-weight: 700;
+    transition: background 0.12s;
+  }
+  .interval-dec:hover, .interval-inc:hover { background: var(--bg); }
+
+  .interval-val {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    min-width: 40px;
+    text-align: center;
+  }
+
+  .kw-progress {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .kw-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--accent);
+    transition: width 1s linear;
+  }
+  .kw-card.main-kw .kw-progress-fill { background: var(--green); }
+
+  .kw-last {
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 4px;
+  }
+
+  /* 추가 버튼 */
+  .add-kw-section {
+    padding: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  .add-kw-form {
+    display: flex;
+    gap: 6px;
+  }
+
+  .add-kw-input {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text);
+    background: var(--surface2);
+    transition: border-color 0.15s;
+  }
+  .add-kw-input:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+
+  /* ── 메인 컨텐츠 ── */
+  .content-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .crawl-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+    flex-shrink: 0;
+  }
+  .spinner.active { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .status-text {
+    font-size: 12px;
+    color: var(--text2);
+    flex: 1;
+  }
+
+  .article-count-badge {
+    font-size: 11px;
+    font-weight: 700;
+    background: var(--tag-bg);
+    color: var(--text2);
+    padding: 3px 10px;
+    border-radius: 20px;
+  }
+
+  /* 기사 카드 */
+  .article-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .article-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    animation: fadeSlide 0.35s ease;
+  }
+  @keyframes fadeSlide {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .article-card:hover { border-color: var(--border2); box-shadow: var(--shadow-md); }
+  .article-card.is-new { border-left: 3px solid var(--green); }
+
+  .article-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  .source-tag {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-bg);
+    border: 1px solid var(--accent-border);
+    padding: 2px 8px;
+    border-radius: 20px;
+  }
+
+  .kw-tag {
+    font-size: 10px;
+    color: var(--text2);
+    background: var(--tag-bg);
+    padding: 2px 7px;
+    border-radius: 20px;
+  }
+
+  .article-time-tag {
+    font-size: 11px;
+    color: var(--text3);
+    margin-left: auto;
+  }
+
+  .article-title-link {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    text-decoration: none;
+    line-height: 1.45;
+    margin-bottom: 8px;
+    transition: color 0.15s;
+  }
+  .article-title-link:hover { color: var(--accent); }
+
+  .article-desc {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.75;
+    margin-bottom: 10px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .article-link-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    text-decoration: none;
+    transition: opacity 0.15s;
+  }
+  .article-link-btn:hover { opacity: 0.7; text-decoration: underline; }
+
+  /* 빈 상태 */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 20px;
+    text-align: center;
+  }
+
+  .empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.4;
+  }
+
+  .empty-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text2);
+    margin-bottom: 8px;
+  }
+
+  .empty-desc {
+    font-size: 13px;
+    color: var(--text3);
+    line-height: 1.7;
+    max-width: 300px;
+  }
+
+  /* ── 로그바 ── */
+  .log-bar {
+    background: #1C1B18;
+    color: #6EE7B7;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    padding: 7px 24px;
+    min-height: 32px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── 모달 ── */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 500;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-backdrop.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 32px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: var(--shadow-md);
+  }
+
+  .modal-title {
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  .modal-desc {
+    font-size: 13px;
+    color: var(--text2);
+    margin-bottom: 20px;
+    line-height: 1.6;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* 스크롤바 */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- 상단 헤더 -->
+<div class="top-bar">
+  <div class="top-left">
+    <div class="pulse-ring inactive" id="pulseDot"></div>
+    <span class="app-title">🗞 기사 크롤링 중 ...</span>
+  </div>
+  <div class="top-clock" id="clockEl">--:--:--</div>
+  <div class="top-right">
+    <button class="btn" id="pauseBtn" onclick="togglePause()" style="display:none;">
+      <svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+      일시정지
+    </button>
+    <button class="btn" onclick="downloadHTML()">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      HTML 다운로드
+    </button>
+  </div>
+</div>
+
+<div class="main-layout">
+
+  <!-- 사이드바 -->
+  <div class="sidebar">
+
+    <!-- API 키 설정 -->
+    <div class="sidebar-section">
+      <div class="section-label">네이버 오픈 API</div>
+      <div class="api-input-wrap">
+        <input class="api-input" id="clientIdInput" type="text"
+          placeholder="Client ID를 입력하세요"
+          oninput="onApiInput()" onkeydown="if(event.key==='Enter')onStartBtn()" autocomplete="off" spellcheck="false">
+        <span class="api-status-icon" id="apiStatusIcon"></span>
+      </div>
+      <div class="api-hint" id="apiHint">
+        <a href="https://developers.naver.com/apps/#/register" target="_blank">네이버 개발자센터</a>에서
+        앱을 등록하고 <strong>뉴스 검색 API</strong>의 Client ID를 입력하세요.<br>
+        ※ 브라우저 CORS 제한으로 <code>proxy.js</code> 실행 필요
+      </div>
+      <button class="btn primary" id="startBtn" onclick="onStartBtn()"
+        style="width:100%;justify-content:center;margin-top:10px;font-size:13px;padding:9px;">
+        &#9654; 크롤링 시작
+      </button>
+    </div>
+
+    <!-- 프록시 안내 -->
+    <div class="sidebar-section">
+      <div class="section-label">프록시 서버 설정</div>
+      <div style="font-size:11px; color:var(--text2); line-height:1.7; margin-bottom:8px;">
+        네이버 API는 브라우저에서 직접 호출 시 CORS 오류가 발생해요.<br>
+        동봉된 <code style="background:var(--tag-bg);padding:1px 4px;border-radius:3px;">proxy.js</code> 를 Node.js로 실행하세요:
+      </div>
+      <code style="display:block;background:#1C1B18;color:#6EE7B7;padding:10px 12px;border-radius:8px;font-size:11px;line-height:1.8;">
+        npm install express cors<br>
+        node proxy.js
+      </code>
+      <div style="margin-top:8px;font-size:11px;color:var(--text3);">포트: <strong>3001</strong> (자동 연결)</div>
+      <div style="margin-top:6px;">
+        <button class="btn" style="width:100%;justify-content:center;font-size:11px;" onclick="downloadProxy()">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          proxy.js 다운로드
+        </button>
+      </div>
+    </div>
+
+    <!-- 키워드 목록 -->
+    <div class="section-label" style="padding:12px 16px 0;margin-bottom:0;">키워드 스케줄러</div>
+    <div class="kw-list-wrap" id="kwListWrap"></div>
+
+    <!-- 키워드 추가 -->
+    <div class="add-kw-section">
+      <div class="section-label" style="margin-bottom:8px;">키워드 추가</div>
+      <div class="add-kw-form">
+        <input class="add-kw-input" id="newKwInput" type="text" placeholder="새 키워드 입력..."
+          onkeydown="if(event.key==='Enter')addKeyword()">
+        <button class="btn primary" onclick="addKeyword()">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          추가
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 메인 콘텐츠 -->
+  <div class="content-area">
+    <!-- 탭 바 -->
+    <div style="background:var(--surface);border-bottom:1.5px solid var(--border);display:flex;padding:0 20px;gap:0;flex-shrink:0;">
+      <button id="tab-articles" onclick="switchTab('articles')"
+        style="padding:13px 18px;font-size:13px;font-weight:600;color:var(--accent);border:none;background:transparent;border-bottom:2.5px solid var(--accent);margin-bottom:-1.5px;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;">
+        📰 수집된 기사 <span id="tab-articles-count" style="font-size:10px;font-weight:800;background:var(--accent-bg);color:var(--accent);padding:1px 6px;border-radius:20px;">0</span>
+      </button>
+      <button id="tab-status" onclick="switchTab('status')"
+        style="padding:13px 18px;font-size:13px;font-weight:600;color:var(--text3);border:none;background:transparent;border-bottom:2.5px solid transparent;margin-bottom:-1.5px;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;">
+        📊 키워드 현황 <span id="tab-status-count" style="font-size:10px;font-weight:800;background:var(--tag-bg);color:var(--text2);padding:1px 6px;border-radius:20px;">0</span>
+      </button>
+    </div>
+    <!-- 기사 패널 -->
+    <div id="panel-articles" style="flex:1;overflow-y:auto;padding:18px 20px;display:block;">
+    <div class="crawl-status-bar" id="statusBar">
+      <div class="spinner" id="spinnerEl"></div>
+      <div class="status-text" id="statusText">API Client ID를 입력하면 크롤링이 시작됩니다.</div>
+      <div class="article-count-badge" id="countBadge">0건</div>
+    </div>
+    <div id="pauseBanner" style="display:none;align-items:center;gap:10px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#C2410C;font-weight:600;">
+      ⏸ 크롤링이 일시정지 중입니다. 상단의 '재개' 버튼을 누르면 다시 시작됩니다.
+    </div>
+    <div class="article-grid" id="articleGrid">
+      <div class="empty-state">
+        <div class="empty-icon">📡</div>
+        <div class="empty-title">크롤러 대기 중</div>
+        <div class="empty-desc">좌측 사이드바에서 네이버 오픈 API의 <strong>Client ID</strong>를 입력하면 크롤링이 시작됩니다.</div>
+      </div>
+    </div>
+    </div><!-- /panel-articles -->
+    <!-- 키워드 현황 패널 -->
+    <div id="panel-status" style="flex:1;overflow-y:auto;padding:18px 20px;display:none;">
+      <div class="crawl-status-bar">
+        <div class="spinner" id="spinnerEl2"></div>
+        <div class="status-text" id="statusText2">키워드별 크롤링 현황</div>
+        <div class="article-count-badge" id="kwCountBadge">0개 키워드</div>
+      </div>
+      <div id="kwStatusGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;">
+        <div class="empty-state" style="grid-column:1/-1;">
+          <div class="empty-icon">📊</div>
+          <div class="empty-title">현황 없음</div>
+          <div class="empty-desc">크롤링이 시작되면 키워드별 현황이 표시됩니다.</div>
+        </div>
+      </div>
+    </div><!-- /panel-status -->
+  </div>
+</div>
+
+<!-- 로그바 -->
+<div class="log-bar" id="logBar">시스템 준비 완료. Client ID를 입력하세요.</div>
+
+<!-- 삭제 확인 모달 -->
+<div class="modal-backdrop" id="deleteModal">
+  <div class="modal">
+    <div class="modal-title">키워드 삭제</div>
+    <div class="modal-desc" id="deleteModalDesc">이 키워드를 삭제할까요?</div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeDeleteModal()">취소</button>
+      <button class="btn danger" id="confirmDeleteBtn">삭제</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  상태
+// ═══════════════════════════════════════════════════════════
+let clientId = '';
+let articles = [];   // { id, title, source, desc, link, keywords[], fetchedAt, isNew }
+let keywords = [
+  { id: 'kw0', name: '서울교통공사', isMain: true,  interval: 30, nextIn: 30, prevCount: 0, lastAt: null, totalAdded: 0 },
+  { id: 'kw1', name: '지하철 파업',     isMain: false, interval: 60, nextIn: 60, prevCount: 0, lastAt: null, totalAdded: 0 },
+  { id: 'kw2', name: '서울 지하철 사고', isMain: false, interval: 60, nextIn: 60, prevCount: 0, lastAt: null, totalAdded: 0 },
+  { id: 'kw3', name: '지하철 연착',     isMain: false, interval: 60, nextIn: 60, prevCount: 0, lastAt: null, totalAdded: 0 },
+  { id: 'kw4', name: '서울 지하철 파업', isMain: false, interval: 60, nextIn: 60, prevCount: 0, lastAt: null, totalAdded: 0 },
+  { id: 'kw5', name: '지하철 노조',     isMain: false, interval: 60, nextIn: 60, prevCount: 0, lastAt: null, totalAdded: 0 },
+  { id: 'kw6', name: '도시철도 안전',   isMain: false, interval: 60, nextIn: 60, prevCount: 0, lastAt: null, totalAdded: 0 },
+  { id: 'kw7', name: '지하철 혼잡',     isMain: false, interval: 60, nextIn: 60, prevCount: 0, lastAt: null, totalAdded: 0 },
+  { id: 'kw8', name: '서울 전동차',     isMain: false, interval: 60, nextIn: 60, prevCount: 0, lastAt: null, totalAdded: 0 },
+  { id: 'kw9', name: '지하철 요금 인상', isMain: false, interval: 60, nextIn: 60, prevCount: 0, lastAt: null, totalAdded: 0 },
+  { id: 'kw10',name: '지하철 스크린도어',isMain: false, interval: 60, nextIn: 60, prevCount: 0, lastAt: null, totalAdded: 0 },
+];
+let kwIdCounter = 20;
+let crawlQueue = [];
+let isProcessing = false;
+let crawlerRunning = false;
+let isPaused = false;
+let deletePending = null;
+let editingId = null;
+let logs = [];
+
+const PROXY_BASE  = 'http://localhost:3001/naver-news';
+const DISPLAY_MAX = 100;
+const MAX_INTERVAL = 1800;
+const INTERVAL_STEP = 60;
+
+// ═══════════════════════════════════════════════════════════
+//  시계
+// ═══════════════════════════════════════════════════════════
+function pad(n) { return String(n).padStart(2,'0'); }
+function fmtInterval(sec) {
+  if (sec < 60) return sec + '초';
+  const m = Math.floor(sec/60), s = sec%60;
+  return s === 0 ? m + '분' : m + '분 ' + s + '초';
+}
+function nowStr() {
+  const d = new Date();
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+function timeStr(d) {
+  return d ? `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` : '없음';
+}
+setInterval(() => {
+  document.getElementById('clockEl').textContent = nowStr();
+}, 1000);
+
+// ═══════════════════════════════════════════════════════════
+//  로그
+// ═══════════════════════════════════════════════════════════
+function addLog(msg) {
+  const entry = `[${nowStr()}] ${msg}`;
+  logs.unshift(entry);
+  if (logs.length > 30) logs.pop();
+  document.getElementById('logBar').textContent = entry;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  API 입력 처리
+// ═══════════════════════════════════════════════════════════
+function onStartBtn() {
+  // 입력란 값을 강제로 읽어서 크롤러 시작
+  const val = document.getElementById('clientIdInput').value.trim();
+  if (!val) {
+    alert('Client ID를 먼저 입력하세요.');
+    return;
+  }
+  clientId = val;
+  const inp = document.getElementById('clientIdInput');
+  const ico = document.getElementById('apiStatusIcon');
+  const hint = document.getElementById('apiHint');
+  const valid = val.length >= 4 && !/\s/.test(val);
+  inp.className = 'api-input ' + (valid ? 'valid' : 'invalid');
+  ico.textContent = valid ? '✅' : '⚠️';
+  if (!valid) { alert('올바른 Client ID를 입력하세요. (4자 이상, 공백 없음)'); return; }
+  hint.textContent = '유효한 형식입니다. 크롤링을 시작합니다.';
+  if (!crawlerRunning) {
+    startCrawler();
+  } else {
+    addLog('ℹ️ 크롤러가 이미 실행 중입니다.');
+  }
+}
+
+function onApiInput() {
+  const val = document.getElementById('clientIdInput').value.trim();
+  const inp = document.getElementById('clientIdInput');
+  const ico = document.getElementById('apiStatusIcon');
+  const hint= document.getElementById('apiHint');
+
+  clientId = val;
+
+  if (!val) {
+    inp.className = 'api-input';
+    ico.textContent = '';
+    hint.innerHTML = `<a href="https://developers.naver.com/apps/#/register" target="_blank">네이버 개발자센터</a>에서 앱을 등록하고 <strong>뉴스 검색 API</strong>의 Client ID를 입력하세요.<br>※ 브라우저 CORS 제한으로 <strong>프록시 서버</strong>가 필요합니다.`;
+    stopCrawler();
+    return;
+  }
+
+  // 간단 형식 검증 (영숫자, _, -)
+  // 네이버 Client ID: 공백 없이 4자 이상이면 유효로 처리
+  const valid = val.length >= 4 && !/\s/.test(val);
+  inp.className = 'api-input ' + (valid ? 'valid' : 'invalid');
+  ico.textContent = valid ? '✅' : '⚠️';
+  hint.textContent = valid
+    ? '유효한 형식입니다. 프록시 서버가 실행 중이면 크롤링이 자동 시작됩니다.'
+    : '올바른 Client ID 형식인지 확인하세요.';
+
+  if (valid && !crawlerRunning) {
+    startCrawler();
+  } else if (!valid) {
+    stopCrawler();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  크롤러 시작 / 정지
+// ═══════════════════════════════════════════════════════════
+function startCrawler() {
+  crawlerRunning = true;
+  isPaused = false;
+  document.getElementById('pulseDot').classList.remove('inactive', 'paused');
+  const stEl = document.getElementById('statusText');
+  if (stEl) stEl.textContent = '크롤러 시작 중...';
+  const pb = document.getElementById('pauseBtn');
+  if (pb) { pb.style.display = 'inline-flex'; pb.className = 'btn pause-btn'; pb.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 일시정지'; }
+  addLog('🚀 크롤러 시작');
+  const sb = document.getElementById('startBtn');
+  if (sb) { sb.className = 'btn pause-btn'; sb.style.cssText = 'width:100%;justify-content:center;margin-top:10px;font-size:13px;padding:9px;'; sb.innerHTML = '<svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><rect x=\"6\" y=\"4\" width=\"4\" height=\"16\"/><rect x=\"14\" y=\"4\" width=\"4\" height=\"16\"/></svg> 실행 중...'; sb.disabled = true; }
+
+  // 모든 키워드 즉시 큐에 등록
+  keywords.forEach((kw, i) => {
+    kw.nextIn = i * 3; // 3초씩 엇갈려서 시작
+  });
+
+  renderKeywords();
+}
+
+function stopCrawler() {
+  crawlerRunning = false;
+  isPaused = false;
+  crawlQueue = [];
+  isProcessing = false;
+  document.getElementById('pulseDot').classList.add('inactive');
+  document.getElementById('pulseDot').classList.remove('paused');
+  document.getElementById('spinnerEl').classList.remove('active');
+  const st = document.getElementById('statusText');
+  if (st) st.textContent = 'API Client ID를 입력하면 크롤링이 시작됩니다.';
+  const pb = document.getElementById('pauseBtn');
+  if (pb) pb.style.display = 'none';
+  const pb2 = document.getElementById('pauseBanner');
+  if (pb2) pb2.classList.remove('visible');
+  addLog('⏹ 크롤러 정지');
+  const sb2 = document.getElementById('startBtn');
+  if (sb2) { sb2.className = 'btn primary'; sb2.style.cssText = 'width:100%;justify-content:center;margin-top:10px;font-size:13px;padding:9px;'; sb2.innerHTML = '<svg viewBox="0 0 24 24" style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><polygon points=\"5 3 19 12 5 21 5 3\"/></svg> 크롤링 시작'; sb2.disabled = false; }
+  renderKeywords();
+}
+
+function togglePause() {
+  if (!crawlerRunning) return;
+  isPaused = !isPaused;
+  const dot    = document.getElementById('pulseDot');
+  const btn    = document.getElementById('pauseBtn');
+  const banner = document.getElementById('pauseBanner');
+  const bar    = document.getElementById('statusBar');
+  if (isPaused) {
+    dot.classList.add('paused'); dot.classList.remove('inactive');
+    if (btn) { btn.className = 'btn resume-btn'; btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> 재개'; }
+    if (banner) banner.classList.add('visible');
+    if (bar) bar.classList.add('paused-bar');
+    const _stp = document.getElementById('statusText'); if(_stp) _stp.textContent = '⏸ 일시정지 중 — 수집된 기사는 그대로 유지됩니다.';
+    addLog('⏸ 크롤링 일시정지');
+  } else {
+    dot.classList.remove('paused', 'inactive');
+    if (btn) { btn.className = 'btn pause-btn'; btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 일시정지'; }
+    if (banner) banner.classList.remove('visible');
+    if (bar) bar.classList.remove('paused-bar');
+    const _str = document.getElementById('statusText'); if(_str) _str.textContent = '대기 중...';
+    addLog('▶ 크롤링 재개');
+  }
+  renderAll();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  네이버 뉴스 API 호출 (프록시 경유)
+// ═══════════════════════════════════════════════════════════
+async function fetchNaverNews(keyword) {
+  const params = new URLSearchParams({
+    query: keyword,
+    display: 10,
+    sort: 'date',
+  });
+
+  const url = `${PROXY_BASE}?${params}&clientId=${encodeURIComponent(clientId)}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`HTTP ${res.status}: ${txt.slice(0,80)}`);
+  }
+
+  const data = await res.json();
+  return (data.items || []).map(item => ({
+    title: item.title.replace(/<[^>]*>/g, '').replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&#0*39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>'),
+    source: extractSource(item.originallink || item.link),
+    desc: item.description.replace(/<[^>]*>/g, '').replace(/&quot;/g,'"').replace(/&amp;/g,'&').trim(),
+    link: item.link,
+    originalLink: item.originallink,
+  }));
+}
+
+function extractSource(url) {
+  if (!url) return '언론사 미상';
+  try {
+    const h = new URL(url).hostname.replace(/^www\./, '');
+    const map = {
+      'chosun.com':'조선일보','donga.com':'동아일보','joongang.co.kr':'중앙일보',
+      'hani.co.kr':'한겨레','khan.co.kr':'경향신문','kmib.co.kr':'국민일보',
+      'segye.com':'세계일보','munhwa.com':'문화일보','seoul.co.kr':'서울신문',
+      'hankookilbo.com':'한국일보','yna.co.kr':'연합뉴스','ytn.co.kr':'YTN',
+      'mbc.co.kr':'MBC','kbs.co.kr':'KBS','sbs.co.kr':'SBS','jtbc.co.kr':'JTBC',
+      'tvchosun.com':'TV조선','mbn.co.kr':'MBN','edaily.co.kr':'이데일리',
+      'mt.co.kr':'머니투데이','hankyung.com':'한국경제','mk.co.kr':'매일경제',
+      'sedaily.com':'서울경제','bizwatch.co.kr':'비즈워치','newsis.com':'뉴시스',
+      'news1.kr':'뉴스1','news.naver.com':'네이버뉴스',
+    };
+    for (const [k,v] of Object.entries(map)) {
+      if (h.includes(k)) return v;
+    }
+    return h.split('.')[0];
+  } catch { return '언론사 미상'; }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  기사 병합 (중복 제거)
+// ═══════════════════════════════════════════════════════════
+function mergeArticles(items, keyword) {
+  let added = 0;
+  const now = new Date();
+  for (const item of items) {
+    const dupByLink  = articles.find(a => a.link === item.link || a.link === item.originalLink);
+    const dupByTitle = articles.find(a => normalize(a.title) === normalize(item.title));
+    if (dupByLink || dupByTitle) {
+      const target = dupByLink || dupByTitle;
+      if (!target.keywords.includes(keyword)) target.keywords.push(keyword);
+      continue;
+    }
+    articles.unshift({
+      id: `${Date.now()}-${Math.random()}`,
+      title: item.title,
+      source: item.source,
+      desc: item.desc,
+      link: item.originalLink || item.link,
+      keywords: [keyword],
+      fetchedAt: now,
+      isNew: true,
+    });
+    added++;
+  }
+  if (articles.length > DISPLAY_MAX) articles = articles.slice(0, DISPLAY_MAX);
+  if (added > 0) {
+    setTimeout(() => { articles.forEach(a => { a.isNew = false; }); renderArticles(); }, 5000);
+  }
+  return added;
+}
+
+function normalize(s) { return (s||'').replace(/\s+/g,'').toLowerCase(); }
+
+// ═══════════════════════════════════════════════════════════
+//  크롤링 실행
+// ═══════════════════════════════════════════════════════════
+async function crawl(kw) {
+  if (!crawlerRunning || isPaused || !clientId) return;
+
+  document.getElementById('spinnerEl').classList.add('active');
+  const _st = document.getElementById('statusText'); if(_st) _st.textContent = `"${kw.name}" 크롤링 중...`;
+  addLog(`🔍 "${kw.name}" 수집 시작`);
+
+  try {
+    const items = await fetchNaverNews(kw.name);
+    const prev = kw.prevCount;
+    const added = mergeArticles(items, kw.name);
+    const cur = items.length;
+
+    // 인터벌 자동 조정
+    if (kw.isMain) {
+      if (cur > prev) { kw.interval = 20; addLog(`📈 "${kw.name}" 증가 → 주기 20초`); }
+      else            { kw.interval = 30; }
+    } else {
+      if (added > 0 && cur >= prev) {
+        if (kw.interval > 60) { kw.interval = 60; addLog(`📈 "${kw.name}" 증가 → 주기 60초`); }
+        else                  { kw.interval = 30;  addLog(`🚀 "${kw.name}" 급증 → 주기 30초`); }
+      } else if (added === 0 && cur <= prev) {
+        if (kw.interval < MAX_INTERVAL) {
+          kw.interval = Math.min(kw.interval + INTERVAL_STEP, MAX_INTERVAL);
+          const atMax = kw.interval >= MAX_INTERVAL;
+          addLog(`⏳ "${kw.name}" 신규 없음 → 주기 ${fmtInterval(kw.interval)}${atMax ? ' (최대 30분)' : ''}`);
+        } else {
+          addLog(`⏳ "${kw.name}" 최대 주기 유지 (30분)`);
+        }
+      }
+    }
+
+    kw.prevCount = cur;
+    kw.lastAt = new Date();
+    kw.nextIn = kw.interval;
+
+    addLog(`✅ "${kw.name}" 완료 — 신규 ${added}건 / 전체 ${articles.length}건`);
+  } catch(err) {
+    if (err.message.includes('Failed to fetch') || err.message.includes('ECONNREFUSED')) {
+      addLog(`❌ 프록시 서버 연결 실패. proxy.js가 실행 중인지 확인하세요.`);
+      const _stProxy = document.getElementById('statusText'); if(_stProxy) _stProxy.textContent = '⚠️ 프록시 서버에 연결할 수 없습니다.';
+    } else {
+      addLog(`❌ "${kw.name}" 실패: ${err.message.slice(0,60)}`);
+    }
+    kw.nextIn = kw.interval;
+  } finally {
+    document.getElementById('spinnerEl').classList.remove('active');
+    const _str = document.getElementById('statusText'); if(_str) _str.textContent = '대기 중...';
+    renderAll();
+  }
+}
+
+// 큐 처리 (동시 요청 방지)
+async function processQueue() {
+  if (isProcessing) return;
+  isProcessing = true;
+  while (crawlQueue.length > 0 && crawlerRunning) {
+    if (isPaused) { await sleep(1000); continue; }
+    const kw = crawlQueue.shift();
+    await crawl(kw);
+    await sleep(2500);
+  }
+  isProcessing = false;
+}
+
+function enqueue(kw) {
+  if (!crawlQueue.includes(kw)) crawlQueue.push(kw);
+  processQueue();
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// 메인 타이머 (1초마다)
+setInterval(() => {
+  if (!crawlerRunning || isPaused) return;
+  keywords.forEach(kw => {
+    if (kw.nextIn <= 0) {
+      kw.nextIn = kw.interval;
+      enqueue(kw);
+    } else {
+      kw.nextIn--;
+    }
+  });
+  renderKeywords();
+  const tc = document.getElementById('tab-articles-count'); if (tc) tc.textContent = articles.length;
+  const tcs = document.getElementById('tab-status-count'); if (tcs) tcs.textContent = keywords.length;
+}, 1000);
+
+// ═══════════════════════════════════════════════════════════
+//  키워드 CRUD
+// ═══════════════════════════════════════════════════════════
+function addKeyword() {
+  const inp = document.getElementById('newKwInput');
+  const name = inp.value.trim();
+  if (!name) return;
+  const dup = keywords.find(k => k.name === name);
+  if (dup) { addLog(`⚠️ "${name}" 이미 존재하는 키워드`); inp.value=''; return; }
+  const kw = {
+    id: 'kw' + (++kwIdCounter),
+    name, isMain: false,
+    interval: 60, nextIn: crawlerRunning ? 5 : 60,
+    prevCount: 0, lastAt: null,
+  };
+  keywords.push(kw);
+  inp.value = '';
+  addLog(`➕ "${name}" 키워드 추가`);
+  renderKeywords();
+  if (crawlerRunning) enqueue(kw);
+}
+
+function startEditKw(id) {
+  editingId = id;
+  renderKeywords();
+  const inp = document.getElementById(`kw-edit-${id}`);
+  if (inp) { inp.style.display = 'block'; inp.focus(); inp.select(); }
+}
+
+function confirmEditKw(id) {
+  const inp = document.getElementById(`kw-edit-${id}`);
+  if (!inp) return;
+  const newName = inp.value.trim();
+  if (!newName) { cancelEditKw(); return; }
+  const kw = keywords.find(k => k.id === id);
+  if (kw) { addLog(`✏️ "${kw.name}" → "${newName}" 변경`); kw.name = newName; }
+  editingId = null;
+  renderKeywords();
+}
+
+function cancelEditKw() {
+  editingId = null;
+  renderKeywords();
+}
+
+function openDeleteModal(id) {
+  const kw = keywords.find(k => k.id === id);
+  if (!kw) return;
+  if (kw.isMain) { addLog('⚠️ 주요 키워드(서울교통공사)는 삭제할 수 없습니다.'); return; }
+  deletePending = id;
+  document.getElementById('deleteModalDesc').textContent = `"${kw.name}" 키워드를 삭제할까요?`;
+  document.getElementById('confirmDeleteBtn').onclick = () => confirmDelete(id);
+  document.getElementById('deleteModal').classList.add('open');
+}
+
+function closeDeleteModal() {
+  deletePending = null;
+  document.getElementById('deleteModal').classList.remove('open');
+}
+
+function confirmDelete(id) {
+  keywords = keywords.filter(k => k.id !== id);
+  crawlQueue = crawlQueue.filter(k => k.id !== id);
+  closeDeleteModal();
+  addLog(`🗑 키워드 삭제됨`);
+  renderKeywords();
+}
+
+function changeInterval(id, delta) {
+  const kw = keywords.find(k => k.id === id);
+  if (!kw) return;
+  kw.interval = Math.max(10, Math.min(MAX_INTERVAL, kw.interval + delta));
+  kw.nextIn = Math.min(kw.nextIn, kw.interval);
+  addLog(`🔧 "${kw.name}" 주기 → ${kw.interval}초`);
+  renderKeywords();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  렌더링
+// ═══════════════════════════════════════════════════════════
+function renderKeywords() {
+  const wrap = document.getElementById('kwListWrap');
+  wrap.innerHTML = keywords.map(kw => {
+    const pct = Math.round(100 - (kw.nextIn / kw.interval * 100));
+    const isEditing = editingId === kw.id;
+    return `
+      <div class="kw-card ${kw.isMain ? 'main-kw' : ''}" id="kwcard-${kw.id}">
+        <div class="kw-top">
+          <span class="kw-name-display ${kw.isMain ? 'main' : ''}"
+            style="display:${isEditing ? 'none' : 'block'}"
+            ondblclick="startEditKw('${kw.id}')">${kw.name}</span>
+          <input class="kw-name-input" id="kw-edit-${kw.id}" type="text"
+            value="${kw.name}"
+            style="display:${isEditing ? 'block' : 'none'}"
+            onkeydown="if(event.key==='Enter')confirmEditKw('${kw.id}');if(event.key==='Escape')cancelEditKw();">
+          <span class="badge ${kw.isMain ? 'main' : 'sub'}">${kw.isMain ? '주요' : '연관'}</span>
+          <div class="kw-actions">
+            ${!isEditing ? `
+              <button class="icon-btn" title="이름 수정" onclick="startEditKw('${kw.id}')">
+                <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              ${!kw.isMain ? `
+                <button class="icon-btn del" title="삭제" onclick="openDeleteModal('${kw.id}')">
+                  <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                </button>
+              ` : ''}
+            ` : `
+              <button class="icon-btn confirm" title="확인" onclick="confirmEditKw('${kw.id}')">
+                <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button class="icon-btn del" title="취소" onclick="cancelEditKw()">
+                <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            `}
+          </div>
+        </div>
+        <div class="kw-meta">
+          <div class="kw-interval-row">
+            <span>주기: <strong>${kw.interval}초</strong> / 다음: <strong>${kw.nextIn}초</strong></span>
+            <div class="interval-control">
+              <button class="interval-dec" onclick="changeInterval('${kw.id}', -30)" title="-30초">−</button>
+              <span class="interval-val">${kw.interval}s</span>
+              <button class="interval-inc" onclick="changeInterval('${kw.id}', +30)" title="+30초">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="kw-progress">
+          <div class="kw-progress-fill" style="width:${pct}%"></div>
+        </div>
+        <div class="kw-last">최근 수집: ${timeStr(kw.lastAt)}</div>
+      </div>`;
+  }).join('');
+}
+
+function renderArticles() {
+  const grid = document.getElementById('articleGrid');
+  document.getElementById('countBadge').textContent = `${articles.length}건`;
+
+  if (articles.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📡</div>
+        <div class="empty-title">${crawlerRunning ? '수집 중...' : '크롤러 대기 중'}</div>
+        <div class="empty-desc">${crawlerRunning
+          ? '첫 기사를 수집하고 있습니다. 잠시 기다려주세요.'
+          : 'API Client ID를 입력하면 크롤링이 시작됩니다.'}</div>
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = articles.map(a => {
+    const t = a.fetchedAt;
+    const ts = `${pad(t.getHours())}:${pad(t.getMinutes())}`;
+    const kwTags = a.keywords.map(k => `<span class="kw-tag">${k}</span>`).join('');
+    return `
+      <div class="article-card ${a.isNew ? 'is-new' : ''}">
+        <div class="article-meta-row">
+          <span class="source-tag">${a.source}</span>
+          ${kwTags}
+          <span class="article-time-tag">${ts}</span>
+        </div>
+        <a class="article-title-link" href="${a.link}" target="_blank" rel="noopener">${a.title}</a>
+        <div class="article-desc">${a.desc || '내용 없음'}</div>
+        <a class="article-link-btn" href="${a.link}" target="_blank" rel="noopener">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          기사 원문 보기
+        </a>
+      </div>`;
+  }).join('');
+}
+
+function switchTab(tab) {
+  document.getElementById('panel-articles').style.display = tab==='articles' ? 'block' : 'none';
+  document.getElementById('panel-status').style.display   = tab==='status'   ? 'block' : 'none';
+  const tabA = document.getElementById('tab-articles');
+  const tabS = document.getElementById('tab-status');
+  const activeStyle = 'padding:13px 18px;font-size:13px;font-weight:600;color:var(--accent);border:none;background:transparent;border-bottom:2.5px solid var(--accent);margin-bottom:-1.5px;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;';
+  const inactiveStyle = 'padding:13px 18px;font-size:13px;font-weight:600;color:var(--text3);border:none;background:transparent;border-bottom:2.5px solid transparent;margin-bottom:-1.5px;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;';
+  tabA.style.cssText = tab==='articles' ? activeStyle : inactiveStyle;
+  tabS.style.cssText = tab==='status'   ? activeStyle : inactiveStyle;
+  const cntA = document.getElementById('tab-articles-count');
+  const cntS = document.getElementById('tab-status-count');
+  if (cntA) cntA.style.cssText = tab==='articles' ? 'font-size:10px;font-weight:800;background:var(--accent-bg);color:var(--accent);padding:1px 6px;border-radius:20px;' : 'font-size:10px;font-weight:800;background:var(--tag-bg);color:var(--text2);padding:1px 6px;border-radius:20px;';
+  if (cntS) cntS.style.cssText = tab==='status'   ? 'font-size:10px;font-weight:800;background:var(--accent-bg);color:var(--accent);padding:1px 6px;border-radius:20px;' : 'font-size:10px;font-weight:800;background:var(--tag-bg);color:var(--text2);padding:1px 6px;border-radius:20px;';
+  if (tab === 'status') renderKwStatus();
+}
+
+function fmtIntervalKs(sec) {
+  if (sec < 60) return sec + '초';
+  const m = Math.floor(sec/60), s = sec%60;
+  return s === 0 ? m + '분' : m + '분 ' + s + '초';
+}
+
+function renderKwStatus() {
+  const grid = document.getElementById('kwStatusGrid');
+  if (!grid) return;
+  const cnt = document.getElementById('kwCountBadge');
+  if (cnt) cnt.textContent = keywords.length + '개 키워드';
+  const tc = document.getElementById('tab-status-count');
+  if (tc) tc.textContent = keywords.length;
+
+  if (!crawlerRunning) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-icon">📊</div><div class="empty-title">현황 없음</div><div class="empty-desc">크롤링이 시작되면 키워드별 현황이 표시됩니다.</div></div>';
+    return;
+  }
+
+  grid.innerHTML = keywords.map(function(kw) {
+    var pct       = Math.round(100 - (kw.nextIn / kw.interval * 100));
+    var atMax     = !kw.isMain && kw.interval >= MAX_INTERVAL;
+    var kwArts    = articles.filter(function(a){ return a.keywords && a.keywords.includes(kw.name); }).length;
+    var statusColor = isPaused ? '#D97706' : (kw.interval <= 30 ? '#16A34A' : atMax ? '#DC2626' : '#D97706');
+    var statusLabel = isPaused ? '정지' : (kw.interval <= 30 ? '빠름' : atMax ? '최대(30분)' : '보통');
+    var cardBorder  = kw.isMain ? '#BFDBFE' : (atMax && !isPaused ? '#FDE68A' : '#E0DCD4');
+    var cardBg      = kw.isMain ? '#EBF2FF' : '#FFFFFF';
+    var barColor    = kw.isMain ? '#16A34A' : (atMax ? '#D97706' : '#1A56DB');
+    var badgeBg     = kw.isMain ? '#1A56DB' : (atMax ? '#FFFBEB' : '#EEECEA');
+    var badgeColor  = kw.isMain ? '#fff' : (atMax ? '#D97706' : '#6B6860');
+    var badgeBorder = atMax ? '1px solid #FDE68A' : 'none';
+    var badgeLabel  = kw.isMain ? '주요' : (atMax ? '최대' : '연관');
+    var nextLabel   = isPaused ? '정지' : fmtInterval(kw.nextIn);
+    var nextColor   = isPaused ? '#D97706' : '#1C1B18';
+
+    var html = '<div style="background:' + cardBg + ';border:1px solid ' + cardBorder + ';border-radius:10px;padding:14px 16px;transition:border-color .2s;">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">';
+    html += '<span style="font-size:13px;font-weight:700;color:' + (kw.isMain ? '#1A56DB' : '#1C1B18') + ';">' + kw.name + '</span>';
+    html += '<span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:20px;background:' + badgeBg + ';color:' + badgeColor + ';border:' + badgeBorder + ';">' + badgeLabel + '</span>';
+    html += '</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">';
+    html += '<div style="background:#F9F8F5;border-radius:6px;padding:6px 8px;"><div style="font-size:10px;color:#9E9B93;margin-bottom:1px;">크롤링 주기</div><div style="font-size:12px;font-weight:700;">' + fmtInterval(kw.interval) + '</div></div>';
+    html += '<div style="background:#F9F8F5;border-radius:6px;padding:6px 8px;"><div style="font-size:10px;color:#9E9B93;margin-bottom:1px;">다음 수집까지</div><div style="font-size:12px;font-weight:700;color:' + nextColor + ';">' + nextLabel + '</div></div>';
+    html += '<div style="background:#F9F8F5;border-radius:6px;padding:6px 8px;"><div style="font-size:10px;color:#9E9B93;margin-bottom:1px;">수집한 기사</div><div style="font-size:12px;font-weight:700;color:#16A34A;">' + kwArts + '건</div></div>';
+    html += '<div style="background:#F9F8F5;border-radius:6px;padding:6px 8px;"><div style="font-size:10px;color:#9E9B93;margin-bottom:1px;">상태</div><div style="font-size:12px;font-weight:700;color:' + statusColor + ';">' + statusLabel + '</div></div>';
+    html += '</div>';
+    html += '<div style="height:4px;background:#E0DCD4;border-radius:2px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;border-radius:2px;background:' + barColor + ';transition:width 1s linear;"></div></div>';
+    html += '<div style="font-size:10px;color:#9E9B93;margin-top:5px;">최근 수집: ' + timeStr(kw.lastAt) + '</div>';
+    html += '</div>';
+    return html;
+  }).join('');
+}
+
+function renderAll() { renderKeywords(); renderArticles(); renderKwStatus(); }
+
+// ═══════════════════════════════════════════════════════════
+//  다운로드
+// ═══════════════════════════════════════════════════════════
+function downloadHTML() {
+  const html = document.documentElement.outerHTML;
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'naver_news_crawler.html';
+  a.click();
+  addLog('💾 HTML 파일 다운로드');
+}
+
+function downloadProxy() {
+  var lines = [
+    '// proxy.js - 네이버 뉴스 API 프록시 서버',
+    '// cmd: set NAVER_CLIENT_SECRET=시크릿 && node proxy.js',
+    "const express=require('express'),cors=require('cors'),https=require('https');",
+    "const app=express(),PORT=process.env.PORT||3001;",
+    "app.use(cors());",
+    "app.get('/',(req,res)=>res.json({status:'running',port:PORT}));",
+    "app.get('/naver-news',(req,res)=>{",
+    "  const{query,display,sort,start,clientId}=req.query;",
+    "  const id=clientId||process.env.NAVER_CLIENT_ID;",
+    "  const secret=process.env.NAVER_CLIENT_SECRET;",
+    "  if(!id) return res.status(400).json({error:'clientId 필요'});",
+    "  if(!secret||secret==='YOUR_SECRET') return res.status(500).json({error:'NAVER_CLIENT_SECRET 환경변수 설정 필요'});",
+    "  if(!query) return res.status(400).json({error:'query 필요'});",
+    "  const params=new URLSearchParams({query,display:display||'10',sort:sort||'date',start:start||'1'});",
+    "  const options={hostname:'openapi.naver.com',path:'/v1/search/news.json?'+params,method:'GET',",
+    "    headers:{'X-Naver-Client-Id':id,'X-Naver-Client-Secret':secret,'Accept':'application/json'}};",
+    "  console.log('['+new Date().toLocaleTimeString()+'] '+query);",
+    "  const r=https.request(options,apiRes=>{",
+    "    let body='';",
+    "    apiRes.on('data',c=>{body+=c;});",
+    "    apiRes.on('end',()=>{try{res.status(apiRes.statusCode).json(JSON.parse(body));}catch(e){res.status(500).json({error:'파싱실패'});}});",
+    "  });",
+    "  r.on('error',e=>res.status(500).json({error:e.message}));",
+    "  r.setTimeout(10000,()=>{r.destroy();res.status(504).json({error:'타임아웃'});});",
+    "  r.end();",
+    "});",
+    "app.listen(PORT,()=>{",
+    "  console.log('\\n──────────────────────────────');",
+    "  console.log('  server: http://localhost:'+PORT);",
+    "  console.log('  Secret: '+(process.env.NAVER_CLIENT_SECRET?'설정됨':'미설정'));",
+    "  console.log('──────────────────────────────\\n');",
+    "});"
+  ];
+  var code = lines.join('\n');
+  var blob = new Blob([code], {type:'text/javascript;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'proxy.js';
+  a.click();
+  addLog('💾 proxy.js 다운로드');
+}
+
+// ═══════════════════════════════════════════════════════════
+//  초기화
+// ═══════════════════════════════════════════════════════════
+renderAll();
+</script>
+</body>
+</html>
