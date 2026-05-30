@@ -1,0 +1,11 @@
+USE news_db;
+
+SET FOREIGN_KEY_CHECKS = 0;
+
+TRUNCATE TABLE alerts;
+TRUNCATE TABLE article_analysis;
+TRUNCATE TABLE clusters;
+TRUNCATE TABLE articles;
+
+SET FOREIGN_KEY_CHECKS = 1;
+// 테스트용
