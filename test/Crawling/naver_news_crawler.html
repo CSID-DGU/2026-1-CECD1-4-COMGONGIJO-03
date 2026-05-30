@@ -785,6 +785,7 @@ let editingId = null;
 let logs = [];
 
 const PROXY_BASE  = 'http://localhost:3001/naver-news';
+const BACKEND_BASE = 'http://localhost:3000';
 const DISPLAY_MAX = 100;
 const MAX_INTERVAL = 1800;
 const INTERVAL_STEP = 60;
@@ -973,6 +974,35 @@ async function fetchNaverNews(keyword) {
   }));
 }
 
+async function sendArticleToBackend(item) {
+  const payload = {
+    title: item.title,
+    content: item.desc || "",
+    url: item.originalLink || item.link,
+    source: item.source || "언론사 미상",
+    author: null,
+    published_at: null
+  };
+
+  const res = await fetch(`${BACKEND_BASE}/api/articles`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (res.status === 409) {
+    return { duplicated: true };
+  }
+
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+
+  return await res.json();
+}
+
 function extractSource(url) {
   if (!url) return '언론사 미상';
   try {
@@ -1045,6 +1075,19 @@ async function crawl(kw) {
     const prev = kw.prevCount;
     const added = mergeArticles(items, kw.name);
     const cur = items.length;
+
+    let savedCount = 0;
+
+    for (const item of items) {
+      try {
+        const result = await sendArticleToBackend(item);
+        if (!result.duplicated) savedCount++;
+      } catch (e) {
+        addLog(`⚠️ 백엔드 저장 실패: ${item.title.slice(0, 20)}`);
+      }
+    }
+
+    addLog(`💾 백엔드 저장 ${savedCount}건 완료`);
 
     // 인터벌 자동 조정
     if (kw.isMain) {

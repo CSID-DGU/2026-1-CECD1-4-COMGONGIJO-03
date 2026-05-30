@@ -9,7 +9,6 @@
 //      (Windows PowerShell: $env:NAVER_CLIENT_SECRET="시크릿"; node proxy.js)
 //   5. 브라우저에서 naver_news_crawler.html 열기
 // ──────────────────────────────────────────────────────────────
-
 const express = require('express');
 const cors    = require('cors');
 const https   = require('https');

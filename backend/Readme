@@ -1,0 +1,36 @@
+/* 
+개발환경
+- Node.js 24.14.0
+- npm 11.9.0
+- MySQL 8.0.46
+- Ollama
+- qwen3:8b
+
+Backend 실행 방법
+
+1. 의존성 설치
+npm install
+
+2. 환경변수 설정
+.env 파일을 생성하고 아래 내용을 입력
+
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=비밀번호
+DB_NAME=news_db
+DB_PORT=3306
+PORT=3000
+
+3. DB 생성
+schema.sql을 MySQL Workbench에서 실행
+
+4. Ollama 설치 및 모델 다운로드
+ollama pull qwen3:8b
+
+5. 서버 실행
+node server.js
+
+6. 확인
+http://localhost:3000/
+
+*/
