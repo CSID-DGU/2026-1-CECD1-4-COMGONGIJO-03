@@ -90,6 +90,13 @@ app.post("/api/articles", async (req, res) => {
                 .replace(/[^\w가-힣]/g, "");
         }
 
+        function normalizeKeyword(value) {
+            return normalizeText(value)
+                .replace(/사고$/, "")
+                .replace(/논란$/, "")
+                .replace(/문제$/, "");
+        }
+
         function getTextSimilarity(a, b) {
             const textA = normalizeText(a);
             const textB = normalizeText(b);
@@ -106,23 +113,98 @@ app.post("/api/articles", async (req, res) => {
             return sameCount / Math.max(textA.length, textB.length);
         }
 
-        function getArrayOverlapScore(newArray, oldArray) {
-            const newSet = new Set((newArray || []).map(normalizeText).filter(Boolean));
-            const oldSet = new Set((oldArray || []).map(normalizeText).filter(Boolean));
+        function getKeywordMatchScore(newKeywords, oldKeywords) {
+            const newSet = [...new Set((newKeywords || []).map(normalizeKeyword).filter(Boolean))];
+            const oldSet = [...new Set((oldKeywords || []).map(normalizeKeyword).filter(Boolean))];
 
-            if (newSet.size === 0 || oldSet.size === 0) return 0;
-
-            let overlap = 0;
-            for (const item of newSet) {
-                if (oldSet.has(item)) overlap++;
+            if (newSet.length === 0 || oldSet.length === 0) {
+                return {
+                    score: 0,
+                    exactMatchCount: 0,
+                    similarMatchCount: 0,
+                    matchedKeywords: []
+                };
             }
 
-            return overlap / Math.max(newSet.size, oldSet.size);
+            let exactMatchCount = 0;
+            let similarMatchCount = 0;
+            const matchedKeywords = [];
+
+            for (const newKeyword of newSet) {
+                let matched = false;
+
+                for (const oldKeyword of oldSet) {
+                    if (newKeyword === oldKeyword) {
+                        exactMatchCount++;
+                        matchedKeywords.push(newKeyword);
+                        matched = true;
+                        break;
+                    }
+                }
+
+                if (matched) continue;
+
+                for (const oldKeyword of oldSet) {
+                    const similarity = getTextSimilarity(newKeyword, oldKeyword);
+
+                    if (similarity >= 0.75) {
+                        similarMatchCount++;
+                        matchedKeywords.push(`${newKeyword}~${oldKeyword}`);
+                        break;
+                    }
+                }
+            }
+
+            const score = Math.min(
+                100,
+                exactMatchCount * 15 + similarMatchCount * 8
+            );
+
+            return {
+                score,
+                exactMatchCount,
+                similarMatchCount,
+                matchedKeywords
+            };
         }
 
+        function isSimilarIssueType(a, b) {
+            const typeA = String(a || "").trim();
+            const typeB = String(b || "").trim();
+
+            if (!typeA || !typeB) return false;
+            if (typeA === typeB) return true;
+
+            const similarGroups = [
+                ["safety", "accident", "facility", "service_disruption"],
+                ["service", "service_disruption", "congestion"],
+                ["labor", "strike"]
+            ];
+
+            return similarGroups.some(group =>
+                group.includes(typeA) && group.includes(typeB)
+            );
+        }
+
+        function normalizeIssueTypeForCluster(issueType) {
+            const type = String(issueType || "etc").trim();
+
+            if (["safety", "accident", "facility", "service_disruption"].includes(type)) {
+                return "incident";
+            }
+
+            return type || "etc";
+        }
+
+        const newKeywords = Array.isArray(analysis.event_keywords)
+            ? analysis.event_keywords
+            : [];
+
+        const clusterIssueType = normalizeIssueTypeForCluster(analysis.issue_type);
+
         const clusterKey = [
-            analysis.issue_type || "etc",
-            normalizeText(analysis.event_name || title) || "no_event"
+            clusterIssueType,
+            newKeywords.map(normalizeKeyword).filter(Boolean).slice(0, 5).join("-") || normalizeText(analysis.event_name || title) || "no_event"
         ].join("-");
 
         let clusterId = null;
@@ -158,46 +240,54 @@ app.post("/api/articles", async (req, res) => {
         let bestCluster = null;
         let bestScore = 0;
 
-        // 클러스터링 계산식
+        // 클러스터링 계산식: event_keywords 중심
         for (const cluster of candidateClusters) {
             let score = 0;
 
-            if (cluster.issue_type === analysis.issue_type) {
-                score += 15;
-            }
+            const oldKeywords = safeParseJsonArray(cluster.event_keywords);
+            const keywordResult = getKeywordMatchScore(newKeywords, oldKeywords);
 
+            // 핵심 기준: 키워드 일치도
+            score += keywordResult.score;
+
+            // 보조 기준: 사건명 유사도
             const eventNameSimilarity = getTextSimilarity(
                 analysis.event_name || title,
                 cluster.event_name || cluster.representative_title
             );
-            score += eventNameSimilarity * 45;
+            score += eventNameSimilarity * 15;
 
-            const oldEntities = safeParseJsonArray(cluster.event_entities);
-            const entityOverlap = getArrayOverlapScore(
-                analysis.event_entities || [],
-                oldEntities
-            );
-            score += entityOverlap * 15;
-
-            const oldKeywords = safeParseJsonArray(cluster.event_keywords);
-            const keywordOverlap = getArrayOverlapScore(
-                analysis.event_keywords || [],
-                oldKeywords
-            );
-            score += keywordOverlap * 20;
-
+            // 보조 기준: 장소 유사도
             const locationSimilarity = getTextSimilarity(
                 analysis.event_location,
                 cluster.event_location
             );
             score += locationSimilarity * 5;
 
+            // 보조 기준: issue_type 유사도
+            if (cluster.issue_type === clusterIssueType || cluster.issue_type === analysis.issue_type) {
+                score += 10;
+            } else if (isSimilarIssueType(cluster.issue_type, analysis.issue_type)) {
+                score += 5;
+            }
+
+            // 키워드가 거의 안 겹치면 event_name만으로 묶이지 않도록 제한
+            if (keywordResult.exactMatchCount + keywordResult.similarMatchCount < 3) {
+                score = Math.min(score, 44);
+            }
+
             console.log(
                 "후보:",
                 cluster.cluster_id,
                 cluster.representative_title,
                 "점수:",
-                score
+                score,
+                "키워드일치:",
+                keywordResult.exactMatchCount,
+                "유사키워드:",
+                keywordResult.similarMatchCount,
+                "매칭:",
+                keywordResult.matchedKeywords
             );
 
             if (score > bestScore) {
@@ -206,7 +296,7 @@ app.post("/api/articles", async (req, res) => {
             }
         }
 
-        const clusterMatchThreshold = 60;
+        const clusterMatchThreshold = 45;
 
         if (bestCluster && bestScore >= clusterMatchThreshold) {
             clusterId = bestCluster.cluster_id;
@@ -240,7 +330,7 @@ app.post("/api/articles", async (req, res) => {
                 [
                     clusterKey,
                     analysis.event_name || title,
-                    analysis.issue_type || "etc",
+                    clusterIssueType,
                     riskScore
                 ]
             );
@@ -791,11 +881,12 @@ app.get("/api/articles/:article_id", async (req, res) => {
     }
 });
 
+
+
 // 9. 클러스터 목록 조회
 app.get("/api/clusters", async (req, res) => {
     try {
-        const [rows] = await db.query(
-            `
+        const [rows] = await db.query(`
             SELECT
                 c.cluster_id,
                 c.cluster_key,
@@ -805,22 +896,134 @@ app.get("/api/clusters", async (req, res) => {
                 c.last_detected,
                 c.article_count,
                 c.max_risk_score,
-                c.cluster_status
+                c.cluster_status,
+
+                a.article_id,
+                a.title,
+                a.url,
+                a.source,
+
+                aa.risk_score,
+                aa.event_name
             FROM clusters c
-            ORDER BY c.max_risk_score DESC, c.last_detected DESC
+            LEFT JOIN article_analysis aa
+                ON c.cluster_id = aa.cluster_id
+            LEFT JOIN articles a
+                ON aa.article_id = a.article_id
+            ORDER BY
+                c.max_risk_score DESC,
+                c.last_detected DESC
+        `);
+
+        const clusterMap = new Map();
+
+        for (const row of rows) {
+
+            if (!clusterMap.has(row.cluster_id)) {
+                clusterMap.set(row.cluster_id, {
+                    cluster_id: row.cluster_id,
+                    cluster_key: row.cluster_key,
+                    representative_title: row.representative_title,
+                    issue_type: row.issue_type,
+                    first_detected: row.first_detected,
+                    last_detected: row.last_detected,
+                    article_count: row.article_count,
+                    max_risk_score: row.max_risk_score,
+                    cluster_status: row.cluster_status,
+                    articles: []
+                });
+            }
+
+            if (row.article_id) {
+                clusterMap.get(row.cluster_id).articles.push({
+                    article_id: row.article_id,
+                    title: row.title,
+                    url: row.url,
+                    source: row.source,
+                    risk_score: row.risk_score,
+                    event_name: row.event_name
+                });
+            }
+        }
+
+        const clusters = Array.from(clusterMap.values());
+
+        res.json({
+            success: true,
+            count: clusters.length,
+            clusters
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            message: "클러스터 조회 실패"
+        });
+    }
+});
+// 10. 특정 클러스터에 묶인 기사 약식 목록 조회
+app.get("/api/clusters/:cluster_id/articles", async (req, res) => {
+    try {
+        const { cluster_id } = req.params;
+
+        const [clusterRows] = await db.query(
             `
+            SELECT
+                cluster_id,
+                representative_title,
+                issue_type,
+                article_count,
+                max_risk_score,
+                first_detected,
+                last_detected
+            FROM clusters
+            WHERE cluster_id = ?
+            `,
+            [cluster_id]
+        );
+
+        if (clusterRows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: "해당 클러스터를 찾을 수 없습니다."
+            });
+        }
+
+        const [articleRows] = await db.query(
+            `
+            SELECT
+                a.article_id,
+                a.title,
+                a.url,
+                a.source,
+                a.published_at,
+                aa.summary,
+                aa.event_name,
+                aa.event_keywords,
+                aa.risk_score,
+                aa.analyzed_at
+            FROM article_analysis aa
+            INNER JOIN articles a
+            ON aa.article_id = a.article_id
+            WHERE aa.cluster_id = ?
+            ORDER BY aa.risk_score DESC, aa.analyzed_at DESC
+            `,
+            [cluster_id]
         );
 
         res.json({
             success: true,
-            count: rows.length,
-            clusters: rows
+            cluster: clusterRows[0],
+            count: articleRows.length,
+            articles: articleRows
         });
     } catch (error) {
         console.error(error);
         res.status(500).json({
             success: false,
-            message: "클러스터 조회 실패"
+            message: "클러스터 기사 목록 조회 실패"
         });
     }
 });
