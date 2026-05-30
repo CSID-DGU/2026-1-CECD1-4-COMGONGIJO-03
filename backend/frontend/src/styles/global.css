@@ -1,0 +1,796 @@
+:root {
+  color: #1b252a;
+  background: #f7f3e9;
+  font-family:
+    Inter, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    linear-gradient(#d6d1c3 1px, transparent 1px),
+    linear-gradient(90deg, #d6d1c3 1px, transparent 1px),
+    #f7f3e9;
+  background-size: 18px 18px;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  min-height: 42px;
+  border: 2px solid #1b252a;
+  border-radius: 4px;
+  background: #1b252a;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 0 16px;
+}
+
+button:hover {
+  background: #314047;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+button.secondaryButton,
+.topNav button,
+.tabGroup button,
+.sentimentButtons button {
+  background: #fffdf7;
+  color: #1b252a;
+}
+
+button.secondaryButton:hover,
+.topNav button:hover,
+.tabGroup button:hover,
+.sentimentButtons button:hover {
+  background: #edf7f6;
+}
+
+a {
+  color: #075f67;
+  overflow-wrap: anywhere;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  min-height: 42px;
+  border: 2px solid #1b252a;
+  border-radius: 4px;
+  background: #fffdf7;
+  color: #1b252a;
+  padding: 9px 11px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+}
+
+label span,
+dt,
+.eyebrow {
+  color: #53646b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+.appShell {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: 22px;
+}
+
+.appHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.appHeader h1 {
+  margin-bottom: 0;
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+.topNav,
+.tabGroup,
+.toolbarActions,
+.sentimentButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.topNav button.active,
+.tabGroup button.active,
+.sentimentButtons button.active {
+  background: #0d6972;
+  border-color: #0d6972;
+  color: #fff;
+}
+
+.sketchPage {
+  display: grid;
+  gap: 18px;
+}
+
+.pageStack {
+  display: grid;
+  gap: 18px;
+}
+
+.sampleModeBanner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #fff2bf;
+  border: 2px solid #1b252a;
+  border-radius: 6px;
+  color: #1b252a;
+  padding: 12px 16px;
+}
+
+.sampleModeBanner strong {
+  flex: 0 0 auto;
+}
+
+.sampleModeBanner span {
+  color: #4b3d16;
+  line-height: 1.45;
+}
+
+.listHeaderSketch {
+  display: grid;
+  align-items: center;
+  gap: 14px;
+  grid-template-columns: 1fr auto 1fr;
+}
+
+.listHeaderSketch > button {
+  justify-self: end;
+}
+
+.sketchTabs button {
+  min-width: 112px;
+  font-size: 18px;
+}
+
+.dateNavigator {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  justify-content: center;
+}
+
+.dateNavigator strong {
+  min-width: 190px;
+  border-bottom: 3px solid #1b252a;
+  padding: 8px 16px;
+  text-align: center;
+  font-size: 22px;
+}
+
+.controlBand,
+.createBand,
+.alertHeader,
+.stateBox,
+.detailPanel,
+.urlSourceList {
+  background: rgba(255, 253, 247, 0.92);
+  border: 2px solid #1b252a;
+  border-radius: 6px;
+  padding: 18px;
+}
+
+.sketchControlBand {
+  display: grid;
+  gap: 14px;
+}
+
+.sketchToolbar {
+  display: grid;
+  align-items: end;
+  gap: 12px;
+  grid-template-columns: minmax(180px, 1fr) minmax(140px, 180px) auto auto;
+}
+
+.titleSearch input {
+  min-height: 38px;
+}
+
+.sentimentButtons button {
+  min-width: 62px;
+}
+
+.urlSearch {
+  display: grid;
+  align-items: end;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1fr) auto;
+}
+
+.compactControls {
+  display: grid;
+  align-items: end;
+  gap: 12px;
+  grid-template-columns: minmax(160px, 220px) auto;
+  justify-content: start;
+}
+
+.timelineLayout {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 70px minmax(0, 1fr);
+  min-height: 520px;
+}
+
+.timeAxis {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  padding-top: 38px;
+}
+
+.timeAxis::before {
+  position: absolute;
+  top: 0;
+  bottom: 20px;
+  left: 50%;
+  width: 3px;
+  background: #1b252a;
+  content: "";
+}
+
+.timeAxis::after {
+  position: absolute;
+  top: 0;
+  left: calc(50% - 8px);
+  width: 16px;
+  height: 16px;
+  border-left: 3px solid #1b252a;
+  border-top: 3px solid #1b252a;
+  transform: rotate(45deg);
+  content: "";
+}
+
+.timeAxis span {
+  position: sticky;
+  top: 18px;
+  align-self: start;
+  writing-mode: vertical-rl;
+  background: #f7f3e9;
+  font-weight: 900;
+  padding: 6px 2px;
+  z-index: 1;
+}
+
+.timelineArticles {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  border-top: 3px solid #1b252a;
+  padding-top: 20px;
+}
+
+.timelineArticle {
+  display: grid;
+  gap: 14px;
+  width: min(760px, 100%);
+  min-height: 112px;
+  background: #fffdf7;
+  color: #1b252a;
+  padding: 18px;
+  text-align: left;
+}
+
+.timelineArticle:hover {
+  background: #edf7f6;
+}
+
+.timelineArticle strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.timelineArticle p {
+  display: -webkit-box;
+  margin-bottom: 0;
+  overflow: hidden;
+  color: #53646b;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.timelineArticle dl {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.timelineArticle dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.topicButton,
+.backToListButton {
+  justify-self: center;
+  min-width: 180px;
+  background: #fffdf7;
+  color: #1b252a;
+}
+
+.detailScreen {
+  gap: 18px;
+}
+
+.detailTopControls {
+  display: grid;
+  align-items: end;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.detailPanel {
+  display: grid;
+  gap: 16px;
+}
+
+.detailHeader h2 {
+  margin-bottom: 0;
+  font-size: 24px;
+  line-height: 1.35;
+}
+
+.detailSummary {
+  min-height: 150px;
+  border: 2px solid #1b252a;
+  border-radius: 6px;
+  background: #fff;
+  padding: 18px;
+}
+
+.detailSummary p {
+  margin-bottom: 0;
+  color: #2d3b41;
+  line-height: 1.7;
+}
+
+.detailGrid,
+.alertItem dl {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.detailGrid div,
+.alertItem dl div {
+  display: grid;
+  gap: 4px;
+}
+
+dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.chipsBlock h3 {
+  margin-bottom: 8px;
+  font-size: 15px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chips span {
+  border: 1px solid #1b252a;
+  border-radius: 999px;
+  background: #edf7f6;
+  color: #1b252a;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 5px 9px;
+}
+
+.urlSourceList {
+  display: grid;
+  gap: 12px;
+  position: relative;
+}
+
+.urlSourceList h2,
+.createBand h2,
+.alertHeader h2 {
+  margin-bottom: 0;
+}
+
+.urlSourceRow {
+  display: grid;
+  align-items: center;
+  gap: 10px;
+  grid-template-columns: 34px minmax(0, 1fr) 120px;
+}
+
+.urlSourceRow span {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid #1b252a;
+  border-radius: 999px;
+  font-weight: 900;
+}
+
+.feedbackButton {
+  justify-self: end;
+  min-width: 120px;
+  background: #fffdf7;
+  color: #1b252a;
+}
+
+.createBand {
+  display: grid;
+  gap: 14px;
+}
+
+.articleForm {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.articleForm textarea,
+.articleForm button {
+  grid-column: 1 / -1;
+}
+
+.successText {
+  color: #0b6f45;
+  font-weight: 900;
+  margin-bottom: 0;
+}
+
+.errorText {
+  color: #a32218;
+  font-weight: 900;
+  margin-bottom: 0;
+}
+
+.stateBox {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.stateBox p {
+  color: #53646b;
+  margin-bottom: 0;
+}
+
+.errorBox {
+  border-color: #a32218;
+  background: #fff3f1;
+}
+
+.spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid #d7dedc;
+  border-top-color: #0d6972;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+.alertHeader {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.alertList {
+  display: grid;
+  gap: 12px;
+}
+
+.alertItem {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.42fr);
+  background: #fffdf7;
+  border: 2px solid #1b252a;
+  border-left: 8px solid #a32218;
+  border-radius: 6px;
+  padding: 18px;
+}
+
+.alertItem h3 {
+  margin-bottom: 8px;
+}
+
+.workspaceGrid {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.48fr);
+}
+
+.listPanel,
+.detailPanel {
+  min-width: 0;
+}
+
+.articleGroups {
+  display: grid;
+  gap: 16px;
+}
+
+.dateGroup,
+.articleList {
+  display: grid;
+  gap: 10px;
+}
+
+.dateHeader {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.dateHeader h2 {
+  font-size: 18px;
+  margin-bottom: 0;
+}
+
+.articleItem {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  min-height: 96px;
+  padding: 16px;
+  text-align: left;
+  color: #1b252a;
+  background: #fffdf7;
+}
+
+.articleItem:hover,
+.articleItem.isSelected {
+  background: #edf7f6;
+  border-color: #0d6972;
+}
+
+.articleMain strong {
+  display: block;
+  line-height: 1.35;
+  margin-bottom: 7px;
+}
+
+.articleMain p,
+.alertItem p {
+  color: #53646b;
+  line-height: 1.6;
+  margin-bottom: 0;
+}
+
+.articleMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.articleMeta span {
+  border: 1px solid #1b252a;
+  border-radius: 999px;
+  background: #edf7f6;
+  color: #1b252a;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 5px 8px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 980px) {
+  .appShell {
+    padding: 16px;
+  }
+
+  .appHeader,
+  .alertHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .listHeaderSketch,
+  .detailTopControls,
+  .workspaceGrid,
+  .alertItem {
+    grid-template-columns: 1fr;
+  }
+
+  .listHeaderSketch > button {
+    justify-self: stretch;
+  }
+
+  .sketchToolbar {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .appHeader h1 {
+    font-size: 26px;
+  }
+
+  .timelineLayout {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .timelineArticle dl,
+  .detailGrid,
+  .sketchToolbar,
+  .urlSearch,
+  .compactControls,
+  .articleForm,
+  .urlSourceRow {
+    grid-template-columns: 1fr;
+  }
+
+  .sampleModeBanner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .toolbarActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .topNav button,
+  .tabGroup button,
+  .sentimentButtons button,
+  .toolbarActions button {
+    width: 100%;
+  }
+}
+
+.toastContainer {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 9999;
+  display: grid;
+  gap: 10px;
+  width: min(380px, calc(100vw - 36px));
+  pointer-events: none;
+}
+
+.toastAlert {
+  display: grid;
+  gap: 10px;
+  background: #fffdf7;
+  border: 2px solid #1b252a;
+  border-left: 8px solid #a32218;
+  border-radius: 6px;
+  box-shadow: 6px 6px 0 rgba(27, 37, 42, 0.18);
+  padding: 14px;
+  pointer-events: auto;
+  animation: toastSlideIn 0.2s ease-out;
+}
+
+.toastAlertHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.toastAlert h3 {
+  margin-bottom: 0;
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.toastAlert p {
+  margin-bottom: 0;
+  color: #53646b;
+  line-height: 1.5;
+}
+
+.toastCloseButton {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  width: 30px;
+  min-height: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 999px;
+  background: #fffdf7;
+  color: #1b252a;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.toastCloseButton:hover {
+  background: #fff2bf;
+}
+
+.toastAlertMeta {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.toastAlertMeta div {
+  display: grid;
+  gap: 3px;
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .toastContainer {
+    top: 10px;
+    right: 10px;
+    width: calc(100vw - 20px);
+  }
+}
