@@ -1,10 +1,8 @@
 const express = require("express");
-const cors = require("cors");
 const db = require("./db");
 const analyzeArticle = require("./ai/analyzeArticle");
 
 const app = express();
-app.use(cors());
 app.use(express.json());
 
 app.get("/", (req, res) => {
@@ -12,8 +10,9 @@ app.get("/", (req, res) => {
 });
 
 // 1. 기사 저장 + AI 분석 + 분석 결과 저장 + 클러스터링 + 위험 알림 생성
-// 2번 기능을 포함하고 있음 
-// 추후 분리 예정 
+// 2번 기능을 포함하고 있음
+// 현재 클러스터링 기능 작동 비정상, 구현 방식 바꿔야함
+// 추후 분리 예정
 app.post("/api/articles", async (req, res) => {
     try {
         const { title, content, url, source, author, published_at } = req.body;
@@ -68,7 +67,6 @@ app.post("/api/articles", async (req, res) => {
             Number(analysis.target_responsibility || 0) * 0.25 +
             Number(analysis.spread_potential || 0) * 0.2
         );
-
 
         // ===== 클러스터링 시작 =====
         function safeParseJsonArray(value) {
@@ -199,7 +197,7 @@ app.post("/api/articles", async (req, res) => {
                 "점수:",
                 score
             );
-            
+
             if (score > bestScore) {
                 bestScore = score;
                 bestCluster = cluster;
@@ -247,7 +245,7 @@ app.post("/api/articles", async (req, res) => {
 
             clusterId = clusterResult.insertId;
         }
-        // ===== 클러스터링 끝 =====   
+        // ===== 클러스터링 끝 =====
 
         const insertAnalysisSql = `
             INSERT INTO article_analysis (
@@ -327,25 +325,43 @@ app.post("/api/articles", async (req, res) => {
 
         const riskThreshold = 0.7;
 
+        // ===== cluster 단위 위험 알림 생성 시작 =====
+        // 같은 cluster_id에 대해 이미 알림이 있으면 새 알림을 만들지 않음
         if (riskScore >= riskThreshold && analysis.alert_topic) {
-            const [alertResult] = await db.query(
+            const [existingAlerts] = await db.query(
                 `
-                INSERT INTO alerts
-                (article_id, cluster_id, alert_topic, alert_message, risk_score, alert_status, created_at)
-                VALUES (?, ?, ?, ?, ?, 'created', NOW())
+                SELECT alert_id
+                FROM alerts
+                WHERE cluster_id = ?
+                LIMIT 1
                 `,
-                [
-                    articleId,
-                    clusterId,
-                    analysis.alert_topic,
-                    analysis.alert_message || analysis.summary || "위험 기사 감지",
-                    riskScore
-                ]
+                [clusterId]
             );
 
-            alertCreated = true;
-            alertId = alertResult.insertId;
+            if (existingAlerts.length === 0) {
+                const [alertResult] = await db.query(
+                    `
+                    INSERT INTO alerts
+                    (article_id, cluster_id, alert_topic, alert_message, risk_score, alert_status, created_at)
+                    VALUES (?, ?, ?, ?, ?, 'created', NOW())
+                    `,
+                    [
+                        articleId,
+                        clusterId,
+                        analysis.alert_topic,
+                        analysis.alert_message || analysis.summary || "위험 기사 감지",
+                        riskScore
+                    ]
+                );
+
+                alertCreated = true;
+                alertId = alertResult.insertId;
+            } else {
+                alertCreated = false;
+                alertId = existingAlerts[0].alert_id;
+            }
         }
+        // ===== cluster 단위 위험 알림 생성 끝 =====
 
         res.json({
             success: true,
@@ -369,7 +385,7 @@ app.post("/api/articles", async (req, res) => {
 });
 
 // 2. 분석 결과 저장 + 위험하면 알림 생성
-// 이 버전에서 안쓰는게 좋음 
+// 이 버전에서 안쓰는게 좋음
 app.post("/api/articles/:article_id/analysis", async (req, res) => {
     try {
         const { article_id } = req.params;
@@ -633,6 +649,7 @@ app.get("/api/alerts", async (req, res) => {
             SELECT
                 al.alert_id,
                 al.article_id,
+                al.cluster_id,
                 al.alert_topic,
                 al.alert_message,
                 al.risk_score,
@@ -663,10 +680,10 @@ app.get("/api/alerts", async (req, res) => {
 });
 
 // 7. 전체 기사 조회 + 키워드 검색
-// TODO : 
+// TODO :
 // 추후 속도에 문제 생길 수 있음
-// 키워드를 뽑아내 저장한 뒤 뽑아낸 키워드를 검색하는쪽이나 
-// 본문을 제외하고 검색하거나 기간을 제한하는 쪽으로 수정 
+// 키워드를 뽑아내 저장한 뒤 뽑아낸 키워드를 검색하는쪽이나
+// 본문을 제외하고 검색하거나 기간을 제한하는 쪽으로 수정
 app.get("/api/articles", async (req, res) => {
     try {
         const { keyword } = req.query;
@@ -711,7 +728,6 @@ app.get("/api/articles", async (req, res) => {
         });
     }
 });
-
 
 // 8. article_id로 기사 + 분석 결과 조회
 app.get("/api/articles/:article_id", async (req, res) => {
@@ -806,7 +822,6 @@ app.get("/api/clusters", async (req, res) => {
         });
     }
 });
-
 
 app.listen(3000, () => {
     console.log("server start");
