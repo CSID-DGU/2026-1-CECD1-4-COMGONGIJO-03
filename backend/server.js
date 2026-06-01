@@ -2,6 +2,25 @@ const express = require("express");
 const cors = require("cors");
 const db = require("./db");
 const analyzeArticle = require("./ai/analyzeArticle");
+const { getEmbedding, cosineSimilarity } = require("./ai/embedding");
+
+const embeddingCache = new Map();
+
+async function getCachedEmbedding(text) {
+    if (!text) return null;
+
+    if (embeddingCache.has(text)) {
+        console.log("캐시 히트");
+        return embeddingCache.get(text);
+    }
+
+    const embedding = await getEmbedding(text);
+
+    embeddingCache.set(text, embedding);
+
+    return embedding;
+}
+
 
 const app = express();
 app.use(cors());
@@ -97,6 +116,7 @@ app.post("/api/articles", async (req, res) => {
                 .replace(/문제$/, "");
         }
 
+        // [수정] 단순 글자 매칭에서 2글자 쌍(Bi-gram) 비교 방식으로 변경하여 단어 유사도 정확도 향상
         function getTextSimilarity(a, b) {
             const textA = normalizeText(a);
             const textB = normalizeText(b);
@@ -105,12 +125,25 @@ app.post("/api/articles", async (req, res) => {
             if (textA === textB) return 1;
             if (textA.includes(textB) || textB.includes(textA)) return 0.8;
 
-            let sameCount = 0;
-            for (const ch of textA) {
-                if (textB.includes(ch)) sameCount++;
+            const getBigrams = str => {
+                const bigrams = new Set();
+                for (let i = 0; i < str.length - 1; i++) {
+                    bigrams.add(str.substr(i, 2));
+                }
+                return bigrams;
+            };
+
+            const setA = getBigrams(textA);
+            const setB = getBigrams(textB);
+            
+            if (setA.size === 0 || setB.size === 0) return 0;
+
+            let intersection = 0;
+            for (const token of setA) {
+                if (setB.has(token)) intersection++;
             }
 
-            return sameCount / Math.max(textA.length, textB.length);
+            return intersection / Math.max(setA.size, setB.size);
         }
 
         function getKeywordMatchScore(newKeywords, oldKeywords) {
@@ -196,9 +229,30 @@ app.post("/api/articles", async (req, res) => {
             return type || "etc";
         }
 
+        function makeKeywordSentence(keywords) {
+            return [...new Set((keywords || []).map(normalizeKeyword).filter(Boolean))]
+                .slice(0, 10)
+                .join(" ");
+        }
+
         const newKeywords = Array.isArray(analysis.event_keywords)
             ? analysis.event_keywords
             : [];
+        const newKeywordSentence = makeKeywordSentence(newKeywords);
+
+        let newEmbedding = null;
+
+        try {
+            if (newKeywordSentence) {
+                newEmbedding = await getCachedEmbedding(newKeywordSentence);
+            }
+        } catch (error) {
+            console.error("새 기사 임베딩 생성 실패:", error.message);
+        }
+
+
+
+
 
         const clusterIssueType = normalizeIssueTypeForCluster(analysis.issue_type);
 
@@ -240,54 +294,84 @@ app.post("/api/articles", async (req, res) => {
         let bestCluster = null;
         let bestScore = 0;
 
-        // 클러스터링 계산식: event_keywords 중심
+        // 클러스터링 계산식 개선 루프
         for (const cluster of candidateClusters) {
             let score = 0;
 
             const oldKeywords = safeParseJsonArray(cluster.event_keywords);
             const keywordResult = getKeywordMatchScore(newKeywords, oldKeywords);
 
-            // 핵심 기준: 키워드 일치도
-            score += keywordResult.score;
+            // 1. 핵심 기준: 키워드 일치도
+            let embeddingSimilarity = 0;
+            let embeddingScore = 0;
 
-            // 보조 기준: 사건명 유사도
+            try {
+                const oldKeywordSentence = makeKeywordSentence(oldKeywords);
+
+                if (newEmbedding && oldKeywordSentence) {
+                    const oldEmbedding = await getCachedEmbedding(oldKeywordSentence);
+                    embeddingSimilarity = cosineSimilarity(newEmbedding, oldEmbedding);
+                    embeddingScore = embeddingSimilarity * 100;
+                }
+            } catch (error) {
+                console.error("기존 클러스터 임베딩 생성 실패:", error.message);
+            }
+
+            // 핵심 기준: 키워드 문장 임베딩 유사도
+            score += embeddingScore * 0.45;
+
+            // 보조 기준: 기존 키워드 직접 일치도
+            score += keywordResult.score * 0.3;
+
+
+
+            // 2. 보조 기준: 사건명 유사도 [점수 대폭 상향: 기존 15점 -> 35점]
             const eventNameSimilarity = getTextSimilarity(
                 analysis.event_name || title,
                 cluster.event_name || cluster.representative_title
             );
-            score += eventNameSimilarity * 15;
+            score += eventNameSimilarity * 35;
 
-            // 보조 기준: 장소 유사도
+            if (
+                keywordResult.exactMatchCount === 0 &&
+                keywordResult.similarMatchCount === 0 &&
+                eventNameSimilarity < 0.2
+            ) {
+                score = Math.min(score, 45);
+            }
+
+            // [추가 보너스] 사건명이 완전히 똑같거나 한쪽을 포함하고 있으면 무조건 묶이게 가중치 추가
+            const normNewName = normalizeText(analysis.event_name || title);
+            const normOldName = normalizeText(cluster.event_name || cluster.representative_title);
+            if (normNewName && normOldName && (normNewName.includes(normOldName) || normOldName.includes(normNewName))) {
+                score += 20;
+            }
+
+            // 3. 보조 기준: 장소 유사도 [점수 유지]
             const locationSimilarity = getTextSimilarity(
                 analysis.event_location,
                 cluster.event_location
             );
             score += locationSimilarity * 5;
 
-            // 보조 기준: issue_type 유사도
+            // 4. 보조 기준: issue_type 유사도 [점수 유지]
             if (cluster.issue_type === clusterIssueType || cluster.issue_type === analysis.issue_type) {
                 score += 10;
             } else if (isSimilarIssueType(cluster.issue_type, analysis.issue_type)) {
                 score += 5;
             }
 
-            // 키워드가 거의 안 겹치면 event_name만으로 묶이지 않도록 제한
-            if (keywordResult.exactMatchCount + keywordResult.similarMatchCount < 3) {
-                score = Math.min(score, 44);
+            // [수정] 40점 낙인 조건 완화: 키워드도 안 겹치고 '동시에' 사건명 유사도까지 낮을 때만 제한 적용
+            const totalMatchCount = keywordResult.exactMatchCount + keywordResult.similarMatchCount;
+            if (totalMatchCount < 1 && eventNameSimilarity < 0.6) {
+                score = Math.min(score, 40); 
             }
 
             console.log(
-                "후보:",
-                cluster.cluster_id,
-                cluster.representative_title,
-                "점수:",
-                score,
-                "키워드일치:",
-                keywordResult.exactMatchCount,
-                "유사키워드:",
-                keywordResult.similarMatchCount,
-                "매칭:",
-                keywordResult.matchedKeywords
+                "후보:", cluster.cluster_id, cluster.representative_title,
+                "최종점수:", score,
+                "키워드일치:", keywordResult.exactMatchCount,
+                "사건명유사도:", eventNameSimilarity
             );
 
             if (score > bestScore) {
@@ -296,7 +380,7 @@ app.post("/api/articles", async (req, res) => {
             }
         }
 
-        const clusterMatchThreshold = 45;
+        const clusterMatchThreshold = 70; 
 
         if (bestCluster && bestScore >= clusterMatchThreshold) {
             clusterId = bestCluster.cluster_id;
@@ -415,7 +499,7 @@ app.post("/api/articles", async (req, res) => {
         let alertCreated = false;
         let alertId = null;
 
-        const riskThreshold = 0.7;
+        const riskThreshold = 0.6;
 
         // ===== cluster 단위 위험 알림 생성 시작 =====
         // 같은 cluster_id에 대해 이미 알림이 있으면 새 알림을 만들지 않음
@@ -522,7 +606,7 @@ app.post("/api/articles/:article_id/analysis", async (req, res) => {
         let alertCreated = false;
         let alertId = null;
 
-        const riskThreshold = 0.7;
+        const riskThreshold = 0.6;
 
         if (risk_score >= riskThreshold && alert_topic) {
             const [duplicateAlerts] = await db.query(
