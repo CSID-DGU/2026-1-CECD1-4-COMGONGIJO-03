@@ -2,20 +2,12 @@ const clusterRepository = require("../repositories/clusterRepository");
 const { getEmbedding, cosineSimilarity } = require("../ai/embedding");
 
 const embeddingCache = new Map();
-const CLUSTER_MATCH_THRESHOLD = 70;
+const CLUSTER_MATCH_THRESHOLD = 60;
 
-async function getCachedEmbedding(text) {
-    if (!text) return null;
 
-    if (embeddingCache.has(text)) {
-        console.log("캐시 히트");
-        return embeddingCache.get(text);
-    }
-
-    const embedding = await getEmbedding(text);
-    embeddingCache.set(text, embedding);
-    return embedding;
-}
+// ============================================================
+// 공통 함수
+// ============================================================
 
 function safeParseJsonArray(value) {
     if (!value) return [];
@@ -29,6 +21,7 @@ function safeParseJsonArray(value) {
     }
 }
 
+
 function normalizeText(value) {
     return String(value || "")
         .toLowerCase()
@@ -36,307 +29,827 @@ function normalizeText(value) {
         .replace(/[^\w가-힣]/g, "");
 }
 
-function normalizeKeyword(value) {
-    return normalizeText(value)
-        .replace(/사고$/, "")
-        .replace(/논란$/, "")
-        .replace(/문제$/, "");
+
+function normalizeEmbeddingText(value) {
+    return String(value || "")
+        .replace(/\s+/g, " ")
+        .trim();
 }
 
-function getTextSimilarity(a, b) {
-    const textA = normalizeText(a);
-    const textB = normalizeText(b);
 
-    if (!textA || !textB) return 0;
-    if (textA === textB) return 1;
-    if (textA.includes(textB) || textB.includes(textA)) return 0.8;
+// 같은 문장을 반복해서 BGE-M3에 넣지 않도록 캐시
+async function getCachedEmbedding(text) {
+    const normalizedText =
+        normalizeEmbeddingText(text);
 
-    const getBigrams = str => {
-        const bigrams = new Set();
-        for (let i = 0; i < str.length - 1; i++) {
-            bigrams.add(str.substr(i, 2));
-        }
-        return bigrams;
-    };
-
-    const setA = getBigrams(textA);
-    const setB = getBigrams(textB);
-
-    if (setA.size === 0 || setB.size === 0) return 0;
-
-    let intersection = 0;
-    for (const token of setA) {
-        if (setB.has(token)) intersection++;
+    if (!normalizedText) {
+        return null;
     }
 
-    return intersection / Math.max(setA.size, setB.size);
+    if (embeddingCache.has(normalizedText)) {
+        return embeddingCache.get(normalizedText);
+    }
+
+    const embedding =
+        await getEmbedding(normalizedText);
+
+    embeddingCache.set(
+        normalizedText,
+        embedding
+    );
+
+    return embedding;
 }
 
-function getKeywordMatchScore(newKeywords, oldKeywords) {
-    const newSet = [...new Set((newKeywords || []).map(normalizeKeyword).filter(Boolean))];
-    const oldSet = [...new Set((oldKeywords || []).map(normalizeKeyword).filter(Boolean))];
 
-    if (newSet.length === 0 || oldSet.length === 0) {
+// 비교에 필요한 문장들을 미리 임베딩
+async function getEmbeddingMap(texts) {
+    const uniqueTexts = [
+        ...new Set(
+            (texts || [])
+                .map(normalizeEmbeddingText)
+                .filter(Boolean)
+        )
+    ];
+
+    const embeddingMap = new Map();
+
+    /*
+     * Ollama에 요청이 한꺼번에 몰리지 않도록
+     * 순차적으로 임베딩합니다.
+     */
+    for (const text of uniqueTexts) {
+        const embedding =
+            await getCachedEmbedding(text);
+
+        if (embedding) {
+            embeddingMap.set(
+                text,
+                embedding
+            );
+        }
+    }
+
+    return embeddingMap;
+}
+
+
+// BGE-M3 cosine similarity
+function getEmbeddingSimilarity(
+    textA,
+    textB,
+    embeddingMap
+) {
+    const normalizedA =
+        normalizeEmbeddingText(textA);
+
+    const normalizedB =
+        normalizeEmbeddingText(textB);
+
+    if (!normalizedA || !normalizedB) {
+        return 0;
+    }
+
+    if (normalizedA === normalizedB) {
+        return 1;
+    }
+
+    const embeddingA =
+        embeddingMap.get(normalizedA);
+
+    const embeddingB =
+        embeddingMap.get(normalizedB);
+
+    if (!embeddingA || !embeddingB) {
+        return 0;
+    }
+
+    const similarity =
+        cosineSimilarity(
+            embeddingA,
+            embeddingB
+        );
+
+    /*
+     * 점수 계산에서는 0 ~ 1 범위를 사용
+     */
+    return Math.max(
+        0,
+        Math.min(
+            1,
+            similarity
+        )
+    );
+}
+
+
+// entity / keyword exact overlap
+function getArrayOverlapScore(
+    newArray,
+    oldArray
+) {
+    const parsedNewArray =
+        Array.isArray(newArray)
+            ? newArray
+            : safeParseJsonArray(newArray);
+
+    const parsedOldArray =
+        Array.isArray(oldArray)
+            ? oldArray
+            : safeParseJsonArray(oldArray);
+
+    const newSet = new Set(
+        parsedNewArray
+            .map(normalizeText)
+            .filter(Boolean)
+    );
+
+    const oldSet = new Set(
+        parsedOldArray
+            .map(normalizeText)
+            .filter(Boolean)
+    );
+
+    if (
+        newSet.size === 0 ||
+        oldSet.size === 0
+    ) {
+        return 0;
+    }
+
+    let overlap = 0;
+
+    for (const item of newSet) {
+        if (oldSet.has(item)) {
+            overlap++;
+        }
+    }
+
+    return (
+        overlap /
+        Math.max(
+            newSet.size,
+            oldSet.size
+        )
+    );
+}
+
+
+// ============================================================
+// 새 클러스터 cluster_key 생성
+//
+// schema2.sql에서 cluster_key가 UNIQUE이므로
+// articleId를 붙여 중복 key 발생을 방지
+// ============================================================
+
+function buildNewClusterKey(
+    analysis,
+    title,
+    articleId
+) {
+    const issueType =
+        normalizeText(
+            analysis.issue_type || "etc"
+        ) || "etc";
+
+    const eventName =
+        normalizeText(
+            analysis.event_name || title
+        ) || "no_event";
+
+    return (
+        `${issueType}-` +
+        `${eventName}-` +
+        `${articleId}`
+    );
+}
+
+
+// ============================================================
+// 각 기존 클러스터에서
+// 가장 최근 분석된 실제 기사의 제목 가져오기
+//
+// repository를 수정하지 않고
+// 기존 findArticlesByClusterId() 재사용
+// ============================================================
+
+async function getLatestArticleTitleMap(
+    candidateClusters
+) {
+    const latestTitleMap =
+        new Map();
+
+    for (const cluster of candidateClusters) {
+        try {
+            const articles =
+                await clusterRepository
+                    .findArticlesByClusterId(
+                        cluster.cluster_id
+                    );
+
+            if (
+                !articles ||
+                articles.length === 0
+            ) {
+                latestTitleMap.set(
+                    cluster.cluster_id,
+                    cluster.representative_title || ""
+                );
+
+                continue;
+            }
+
+            let latestArticle =
+                articles[0];
+
+            for (const article of articles) {
+                const currentTime =
+                    article.analyzed_at
+                        ? new Date(
+                            article.analyzed_at
+                        ).getTime()
+                        : 0;
+
+                const latestTime =
+                    latestArticle.analyzed_at
+                        ? new Date(
+                            latestArticle.analyzed_at
+                        ).getTime()
+                        : 0;
+
+                if (
+                    currentTime >
+                    latestTime
+                ) {
+                    latestArticle =
+                        article;
+                }
+            }
+
+            latestTitleMap.set(
+                cluster.cluster_id,
+
+                latestArticle.title ||
+                cluster.representative_title ||
+                ""
+            );
+
+        } catch (error) {
+
+            console.error(
+                `클러스터 ${cluster.cluster_id} 최신 기사 제목 조회 실패:`,
+                error.message
+            );
+
+            latestTitleMap.set(
+                cluster.cluster_id,
+                cluster.representative_title || ""
+            );
+        }
+    }
+
+    return latestTitleMap;
+}
+
+
+// ============================================================
+// 클러스터 후보 비교
+//
+// 점수 구성:
+//
+// issue_type       15
+// event_name       25  BGE-M3
+// title            20  BGE-M3
+// entity           15  exact overlap
+// keyword          20  exact overlap
+// location          5  BGE-M3
+//
+// 총 100점
+//
+// 60점 이상이면 기존 클러스터에 편입
+// ============================================================
+
+async function findBestCluster(
+    analysis,
+    title
+) {
+    const candidateClusters =
+        await clusterRepository
+            .findRecentCandidates();
+
+    if (
+        !candidateClusters ||
+        candidateClusters.length === 0
+    ) {
         return {
-            score: 0,
-            exactMatchCount: 0,
-            similarMatchCount: 0,
-            matchedKeywords: []
+            bestCluster: null,
+            bestScore: 0
         };
     }
 
-    let exactMatchCount = 0;
-    let similarMatchCount = 0;
-    const matchedKeywords = [];
 
-    for (const newKeyword of newSet) {
-        let matched = false;
+    // 각 클러스터의 최근 실제 기사 제목
+    const latestArticleTitleMap =
+        await getLatestArticleTitleMap(
+            candidateClusters
+        );
 
-        for (const oldKeyword of oldSet) {
-            if (newKeyword === oldKeyword) {
-                exactMatchCount++;
-                matchedKeywords.push(newKeyword);
-                matched = true;
-                break;
-            }
-        }
 
-        if (matched) continue;
+    // --------------------------------------------------------
+    // BGE-M3에 넣을 모든 텍스트 준비
+    // --------------------------------------------------------
 
-        for (const oldKeyword of oldSet) {
-            const similarity = getTextSimilarity(newKeyword, oldKeyword);
-
-            if (similarity >= 0.75) {
-                similarMatchCount++;
-                matchedKeywords.push(`${newKeyword}~${oldKeyword}`);
-                break;
-            }
-        }
-    }
-
-    return {
-        score: Math.min(100, exactMatchCount * 15 + similarMatchCount * 8),
-        exactMatchCount,
-        similarMatchCount,
-        matchedKeywords
-    };
-}
-
-function isSimilarIssueType(a, b) {
-    const typeA = String(a || "").trim();
-    const typeB = String(b || "").trim();
-
-    if (!typeA || !typeB) return false;
-    if (typeA === typeB) return true;
-
-    const similarGroups = [
-        ["safety", "accident", "facility", "service_disruption"],
-        ["service", "service_disruption", "congestion"],
-        ["labor", "strike"]
+    const embeddingTexts = [
+        analysis.event_name || title,
+        title
     ];
 
-    return similarGroups.some(group =>
-        group.includes(typeA) && group.includes(typeB)
-    );
-}
 
-function normalizeIssueTypeForCluster(issueType) {
-    const type = String(issueType || "etc").trim();
-
-    if (["safety", "accident", "facility", "service_disruption"].includes(type)) {
-        return "incident";
+    if (analysis.event_location) {
+        embeddingTexts.push(
+            analysis.event_location
+        );
     }
 
-    return type || "etc";
-}
 
-function makeKeywordSentence(keywords) {
-    return [...new Set((keywords || []).map(normalizeKeyword).filter(Boolean))]
-        .slice(0, 10)
-        .join(" ");
-}
+    for (
+        const cluster
+        of candidateClusters
+    ) {
+        // 기존 클러스터 event_name
+        embeddingTexts.push(
+            cluster.event_name ||
+            cluster.representative_title
+        );
 
-function buildClusterKey(analysis, title, clusterIssueType, newKeywords) {
-    return [
-        clusterIssueType,
-        newKeywords.map(normalizeKeyword).filter(Boolean).slice(0, 5).join("-") ||
-            normalizeText(analysis.event_name || title) ||
-            "no_event"
-    ].join("-");
-}
 
-async function findBestCluster(analysis, title, newKeywords, newEmbedding, clusterIssueType) {
-    const candidateClusters = await clusterRepository.findRecentCandidates();
+        // 기존 클러스터의 최근 실제 기사 제목
+        embeddingTexts.push(
+            latestArticleTitleMap.get(
+                cluster.cluster_id
+            ) ||
+            cluster.representative_title
+        );
+
+
+        // 기존 클러스터 location
+        if (cluster.event_location) {
+            embeddingTexts.push(
+                cluster.event_location
+            );
+        }
+    }
+
+
+    const embeddingMap =
+        await getEmbeddingMap(
+            embeddingTexts
+        );
+
+
     let bestCluster = null;
     let bestScore = 0;
 
-    for (const cluster of candidateClusters) {
+
+    // ========================================================
+    // 각 후보 클러스터와 비교
+    // ========================================================
+
+    for (
+        const cluster
+        of candidateClusters
+    ) {
         let score = 0;
-        const oldKeywords = safeParseJsonArray(cluster.event_keywords);
-        const keywordResult = getKeywordMatchScore(newKeywords, oldKeywords);
 
-        let embeddingSimilarity = 0;
-        let embeddingScore = 0;
 
-        try {
-            const oldKeywordSentence = makeKeywordSentence(oldKeywords);
-
-            if (newEmbedding && oldKeywordSentence) {
-                const oldEmbedding = await getCachedEmbedding(oldKeywordSentence);
-                embeddingSimilarity = cosineSimilarity(newEmbedding, oldEmbedding);
-                embeddingScore = embeddingSimilarity * 100;
-            }
-        } catch (error) {
-            console.error("기존 클러스터 임베딩 생성 실패:", error.message);
-        }
-
-        score += embeddingScore * 0.45;
-        score += keywordResult.score * 0.3;
-
-        const eventNameSimilarity = getTextSimilarity(
-            analysis.event_name || title,
-            cluster.event_name || cluster.representative_title
-        );
-        score += eventNameSimilarity * 35;
+        // ----------------------------------------------------
+        // 1. issue_type
+        // 최대 15점
+        // ----------------------------------------------------
 
         if (
-            keywordResult.exactMatchCount === 0 &&
-            keywordResult.similarMatchCount === 0 &&
-            eventNameSimilarity < 0.2
+            String(
+                cluster.issue_type || ""
+            ) ===
+            String(
+                analysis.issue_type || "etc"
+            )
         ) {
-            score = Math.min(score, 45);
+            score += 15;
         }
 
-        const normalizedNewName = normalizeText(analysis.event_name || title);
-        const normalizedOldName = normalizeText(cluster.event_name || cluster.representative_title);
-        if (
-            normalizedNewName &&
-            normalizedOldName &&
-            (normalizedNewName.includes(normalizedOldName) || normalizedOldName.includes(normalizedNewName))
-        ) {
-            score += 20;
-        }
 
-        const locationSimilarity = getTextSimilarity(
-            analysis.event_location,
-            cluster.event_location
-        );
-        score += locationSimilarity * 5;
+        // ----------------------------------------------------
+        // 2. event_name
+        // BGE-M3
+        // 최대 25점
+        // ----------------------------------------------------
 
-        if (cluster.issue_type === clusterIssueType || cluster.issue_type === analysis.issue_type) {
-            score += 10;
-        } else if (isSimilarIssueType(cluster.issue_type, analysis.issue_type)) {
-            score += 5;
-        }
+        const eventNameSimilarity =
+            getEmbeddingSimilarity(
+                analysis.event_name ||
+                title,
 
-        const totalMatchCount = keywordResult.exactMatchCount + keywordResult.similarMatchCount;
-        if (totalMatchCount < 1 && eventNameSimilarity < 0.6) {
-            score = Math.min(score, 40);
-        }
+                cluster.event_name ||
+                cluster.representative_title,
+
+                embeddingMap
+            );
+
+
+        score +=
+            eventNameSimilarity * 25;
+
+
+        // ----------------------------------------------------
+        // 3. 실제 기사 title
+        // BGE-M3
+        // 최대 20점
+        // ----------------------------------------------------
+
+        const latestArticleTitle =
+            latestArticleTitleMap.get(
+                cluster.cluster_id
+            ) ||
+            cluster.representative_title;
+
+
+        const titleSimilarity =
+            getEmbeddingSimilarity(
+                title,
+                latestArticleTitle,
+                embeddingMap
+            );
+
+
+        score +=
+            titleSimilarity * 20;
+
+
+        // ----------------------------------------------------
+        // 4. entity
+        // exact overlap
+        // 최대 15점
+        // ----------------------------------------------------
+
+        const entityOverlap =
+            getArrayOverlapScore(
+                analysis.event_entities || [],
+
+                safeParseJsonArray(
+                    cluster.event_entities
+                )
+            );
+
+
+        score +=
+            entityOverlap * 15;
+
+
+        // ----------------------------------------------------
+        // 5. keyword
+        // exact overlap
+        // 최대 20점
+        // ----------------------------------------------------
+
+        const keywordOverlap =
+            getArrayOverlapScore(
+                analysis.event_keywords || [],
+
+                safeParseJsonArray(
+                    cluster.event_keywords
+                )
+            );
+
+
+        score +=
+            keywordOverlap * 20;
+
+
+        // ----------------------------------------------------
+        // 6. location
+        // BGE-M3
+        // 최대 5점
+        // ----------------------------------------------------
+
+        const locationSimilarity =
+            getEmbeddingSimilarity(
+                analysis.event_location,
+                cluster.event_location,
+                embeddingMap
+            );
+
+
+        score +=
+            locationSimilarity * 5;
+
+
+        // ----------------------------------------------------
+        // 테스트 확인용 로그
+        // ----------------------------------------------------
 
         console.log(
-            "후보:", cluster.cluster_id, cluster.representative_title,
-            "최종점수:", score,
-            "키워드일치:", keywordResult.exactMatchCount,
-            "사건명유사도:", eventNameSimilarity
+            "후보:",
+            cluster.cluster_id,
+
+            cluster.representative_title,
+
+            "event_name:",
+            eventNameSimilarity.toFixed(3),
+
+            "title:",
+            titleSimilarity.toFixed(3),
+
+            "entity:",
+            entityOverlap.toFixed(3),
+
+            "keyword:",
+            keywordOverlap.toFixed(3),
+
+            "location:",
+            locationSimilarity.toFixed(3),
+
+            "총점:",
+            score.toFixed(2)
         );
 
-        if (score > bestScore) {
-            bestScore = score;
-            bestCluster = cluster;
+
+        if (
+            score >
+            bestScore
+        ) {
+            bestScore =
+                score;
+
+            bestCluster =
+                cluster;
         }
     }
 
-    return { bestCluster, bestScore };
-}
-
-async function assignCluster({ analysis, title, riskScore }) {
-    const newKeywords = Array.isArray(analysis.event_keywords)
-        ? analysis.event_keywords
-        : [];
-    const newKeywordSentence = makeKeywordSentence(newKeywords);
-
-    let newEmbedding = null;
-    try {
-        if (newKeywordSentence) {
-            newEmbedding = await getCachedEmbedding(newKeywordSentence);
-        }
-    } catch (error) {
-        console.error("새 기사 임베딩 생성 실패:", error.message);
-    }
-
-    const clusterIssueType = normalizeIssueTypeForCluster(analysis.issue_type);
-    const clusterKey = buildClusterKey(analysis, title, clusterIssueType, newKeywords);
-
-    const { bestCluster, bestScore } = await findBestCluster(
-        analysis,
-        title,
-        newKeywords,
-        newEmbedding,
-        clusterIssueType
-    );
-
-    let clusterId;
-    if (bestCluster && bestScore >= CLUSTER_MATCH_THRESHOLD) {
-        clusterId = bestCluster.cluster_id;
-        await clusterRepository.updateMatchedCluster(clusterId, riskScore);
-    } else {
-        clusterId = await clusterRepository.createCluster({
-            clusterKey,
-            representativeTitle: analysis.event_name || title,
-            issueType: clusterIssueType,
-            riskScore
-        });
-    }
 
     return {
-        clusterId,
-        clusterKey
+        bestCluster,
+        bestScore
     };
 }
 
+
+// ============================================================
+// 기사 → 클러스터 배정
+// ============================================================
+
+async function assignCluster({
+    articleId,
+    analysis,
+    title,
+    riskScore
+}) {
+
+    const {
+        bestCluster,
+        bestScore
+    } =
+        await findBestCluster(
+            analysis,
+            title
+        );
+
+
+    // ========================================================
+    // 기존 클러스터에 편입
+    // ========================================================
+
+    if (
+        bestCluster &&
+        bestScore >=
+            CLUSTER_MATCH_THRESHOLD
+    ) {
+
+        await clusterRepository
+            .updateMatchedCluster(
+                bestCluster.cluster_id,
+                riskScore
+            );
+
+
+        /*
+         * 기존 클러스터에 들어가는 경우에는
+         * 새 clusterKey를 만들지 않고
+         * 해당 클러스터의 기존 cluster_key를 사용
+         */
+        return {
+            clusterId:
+                bestCluster.cluster_id,
+
+            clusterKey:
+                bestCluster.cluster_key,
+
+            clusterScore:
+                bestScore,
+
+            /*
+             * 이 알고리즘은 제목/event_name/location을
+             * 비교하기 위한 임베딩만 사용하며
+             * article_embedding 자체는 저장하지 않음
+             */
+            articleEmbedding:
+                null
+        };
+    }
+
+
+    // ========================================================
+    // 새 클러스터 생성
+    // ========================================================
+
+    const clusterKey =
+        buildNewClusterKey(
+            analysis,
+            title,
+            articleId
+        );
+
+
+    const clusterId =
+        await clusterRepository
+            .createCluster({
+
+                clusterKey,
+
+                representativeTitle:
+                    analysis.event_name ||
+                    title,
+
+                /*
+                 * 현재 기사가 새 클러스터의
+                 * 최초 대표 기사
+                 */
+                representativeArticleId:
+                    articleId,
+
+                /*
+                 * 현재 알고리즘은 centroid를
+                 * 사용하지 않으므로 null
+                 */
+                centroidEmbedding:
+                    null,
+
+                issueType:
+                    analysis.issue_type ||
+                    "etc",
+
+                riskScore
+            });
+
+
+    return {
+        clusterId,
+        clusterKey,
+
+        clusterScore:
+            bestScore,
+
+        articleEmbedding:
+            null
+    };
+}
+
+
+// ============================================================
+// 전체 클러스터 조회
+// GET /api/clusters
+// ============================================================
+
 async function getClusters() {
-    const rows = await clusterRepository.findAllWithArticles();
-    const clusterMap = new Map();
+
+    const rows =
+        await clusterRepository
+            .findAllWithArticles();
+
+
+    const clusterMap =
+        new Map();
+
 
     for (const row of rows) {
-        if (!clusterMap.has(row.cluster_id)) {
-            clusterMap.set(row.cluster_id, {
-                cluster_id: row.cluster_id,
-                cluster_key: row.cluster_key,
-                representative_title: row.representative_title,
-                issue_type: row.issue_type,
-                first_detected: row.first_detected,
-                last_detected: row.last_detected,
-                article_count: row.article_count,
-                max_risk_score: row.max_risk_score,
-                cluster_status: row.cluster_status,
-                articles: []
-            });
+
+        if (
+            !clusterMap.has(
+                row.cluster_id
+            )
+        ) {
+
+            clusterMap.set(
+                row.cluster_id,
+                {
+                    cluster_id:
+                        row.cluster_id,
+
+                    cluster_key:
+                        row.cluster_key,
+
+                    representative_title:
+                        row.representative_title,
+
+                    issue_type:
+                        row.issue_type,
+
+                    first_detected:
+                        row.first_detected,
+
+                    last_detected:
+                        row.last_detected,
+
+                    article_count:
+                        row.article_count,
+
+                    max_risk_score:
+                        row.max_risk_score,
+
+                    cluster_status:
+                        row.cluster_status,
+
+                    articles: []
+                }
+            );
         }
 
+
         if (row.article_id) {
-            clusterMap.get(row.cluster_id).articles.push({
-                article_id: row.article_id,
-                title: row.title,
-                url: row.url,
-                source: row.source,
-                risk_score: row.risk_score,
-                event_name: row.event_name
-            });
+
+            clusterMap
+                .get(
+                    row.cluster_id
+                )
+                .articles
+                .push({
+
+                    article_id:
+                        row.article_id,
+
+                    title:
+                        row.title,
+
+                    url:
+                        row.url,
+
+                    source:
+                        row.source,
+
+                    risk_score:
+                        row.risk_score,
+
+                    event_name:
+                        row.event_name
+                });
         }
     }
 
-    return Array.from(clusterMap.values());
+
+    return Array.from(
+        clusterMap.values()
+    );
 }
 
-async function getClusterWithArticles(clusterId) {
-    const cluster = await clusterRepository.findById(clusterId);
-    if (!cluster) return null;
 
-    const articles = await clusterRepository.findArticlesByClusterId(clusterId);
-    return { cluster, articles };
+// ============================================================
+// 특정 클러스터 기사 조회
+// GET /api/clusters/:cluster_id/articles
+// ============================================================
+
+async function getClusterWithArticles(
+    clusterId
+) {
+
+    const cluster =
+        await clusterRepository
+            .findById(
+                clusterId
+            );
+
+
+    if (!cluster) {
+        return null;
+    }
+
+
+    const articles =
+        await clusterRepository
+            .findArticlesByClusterId(
+                clusterId
+            );
+
+
+    return {
+        cluster,
+        articles
+    };
 }
+
+
+// ============================================================
+// export
+// ============================================================
 
 module.exports = {
     assignCluster,
