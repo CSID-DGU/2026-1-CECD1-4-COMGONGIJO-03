@@ -8,4 +8,4 @@ TRUNCATE TABLE clusters;
 TRUNCATE TABLE articles;
 
 SET FOREIGN_KEY_CHECKS = 1;
-// 테스트용
+-- 테스트용
