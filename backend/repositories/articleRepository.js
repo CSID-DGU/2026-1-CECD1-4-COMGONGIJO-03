@@ -125,21 +125,34 @@ async function findRiskyArticles(minRisk) {
 
 async function findAll(keyword) {
     let sql = `
-        SELECT *
-        FROM articles
+        SELECT a.*
+        FROM articles a
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM spam_articles s
+            WHERE s.article_id = a.article_id
+        )
     `;
+
     const values = [];
 
     if (keyword) {
         sql += `
-            WHERE title LIKE ?
-            OR content LIKE ?
-            OR source LIKE ?
+            AND (
+                a.title LIKE ?
+                OR a.content LIKE ?
+                OR a.source LIKE ?
+            )
         `;
-        values.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
+
+        values.push(
+            `%${keyword}%`,
+            `%${keyword}%`,
+            `%${keyword}%`
+        );
     }
 
-    sql += ` ORDER BY collected_at DESC`;
+    sql += ` ORDER BY a.collected_at DESC`;
 
     const [rows] = await db.query(sql, values);
     return rows;

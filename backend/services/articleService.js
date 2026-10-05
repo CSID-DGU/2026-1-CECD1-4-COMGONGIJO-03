@@ -1,6 +1,7 @@
 const analyzeArticle = require("../ai/analyzeArticle");
 const articleRepository = require("../repositories/articleRepository");
 const analysisRepository = require("../repositories/analysisRepository");
+const spamRepository = require("../repositories/spamRepository");
 const { calculateRiskScore } = require("./riskService");
 const { assignCluster } = require("./clusterService");
 const {
@@ -34,6 +35,34 @@ async function createAndAnalyzeArticle(article) {
     });
 
     console.log("AI 분석 결과:", analysis);
+
+    /*
+     * 대상 기업과 관련 없는 기사라면
+     * AI 분석 결과는 저장하되 위험도 계산과 클러스터링은 수행하지 않습니다.
+     */
+    if (analysis.target_related === false) {
+        const analysisId =
+            await analysisRepository.insertFilteredAnalysis({
+                articleId,
+                analysis
+            });
+
+        const spamId =
+            await spamRepository.insertSpamArticle({
+                articleId,
+                analysisId,
+                spamSource: "AI"
+            });
+
+        return {
+            duplicate: false,
+            filtered: true,
+            articleId,
+            analysisId,
+            spamId,
+            analysis
+        };
+    }
 
     // AI 분석 결과를 바탕으로 기사 위험도를 계산합니다.
     const riskScore = calculateRiskScore(analysis);

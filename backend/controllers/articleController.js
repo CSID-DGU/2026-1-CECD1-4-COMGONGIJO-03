@@ -32,6 +32,19 @@ async function createArticle(req, res) {
             });
         }
 
+        // 비관련 기사로 필터링된 경우
+        if (result.filtered) {
+            return res.json({
+                success: true,
+                message: "기사 저장 + AI 분석 + 비관련 기사 필터링 완료",
+                article_id: result.articleId,
+                analysis_id: result.analysisId,
+                spam_id: result.spamId,
+                analysis: result.analysis
+            });
+        }
+
+        // 기존 정상 기사 처리 결과
         return res.json({
             success: true,
             message: "기사 저장 + AI 분석 + 분석 결과 저장 + 클러스터링 완료",
@@ -111,6 +124,7 @@ async function getArticleByUrl(req, res) {
         }
 
         const article = await articleRepository.findByUrlWithAnalysis(url);
+
         if (!article) {
             return res.status(404).json({
                 success: false,
@@ -134,6 +148,7 @@ async function getArticleByUrl(req, res) {
 async function getAnalyzedArticles(req, res) {
     try {
         const articles = await articleRepository.findAnalyzedArticles();
+
         return res.json({
             success: true,
             count: articles.length,

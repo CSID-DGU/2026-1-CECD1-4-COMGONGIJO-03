@@ -74,8 +74,35 @@ CREATE TABLE article_analysis (
   analysis_status VARCHAR(20),
   analyzed_at DATETIME,
 
-  FOREIGN KEY (article_id) REFERENCES articles(article_id),
-  FOREIGN KEY (cluster_id) REFERENCES clusters(cluster_id)
+  FOREIGN KEY (article_id)
+    REFERENCES articles(article_id),
+
+  FOREIGN KEY (cluster_id)
+    REFERENCES clusters(cluster_id)
+);
+
+-- 스팸기사함
+-- 기사 원문이나 요약을 중복 저장하지 않고
+-- 기존 기사 및 분석 결과를 참조하여 현재 스팸 여부만 관리
+CREATE TABLE spam_articles (
+  spam_id INT AUTO_INCREMENT PRIMARY KEY,
+
+  article_id INT NOT NULL UNIQUE,
+  analysis_id INT NOT NULL,
+
+  -- AI: target_related 판정으로 자동 분류
+  -- MANUAL: 사용자가 직접 스팸으로 지정
+  spam_source VARCHAR(20) NOT NULL DEFAULT 'AI',
+
+  filtered_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (article_id)
+    REFERENCES articles(article_id)
+    ON DELETE CASCADE,
+
+  FOREIGN KEY (analysis_id)
+    REFERENCES article_analysis(analysis_id)
+    ON DELETE CASCADE
 );
 
 CREATE TABLE alerts (
@@ -89,6 +116,9 @@ CREATE TABLE alerts (
   alert_status VARCHAR(50),
   created_at DATETIME NOT NULL,
 
-  FOREIGN KEY (article_id) REFERENCES articles(article_id),
-  FOREIGN KEY (cluster_id) REFERENCES clusters(cluster_id)
+  FOREIGN KEY (article_id)
+    REFERENCES articles(article_id),
+
+  FOREIGN KEY (cluster_id)
+    REFERENCES clusters(cluster_id)
 );

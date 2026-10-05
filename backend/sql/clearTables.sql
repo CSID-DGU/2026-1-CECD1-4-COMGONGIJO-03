@@ -6,6 +6,7 @@ TRUNCATE TABLE alerts;
 TRUNCATE TABLE article_analysis;
 TRUNCATE TABLE clusters;
 TRUNCATE TABLE articles;
+TRUNCATE TABLE spam_articles;
 
 SET FOREIGN_KEY_CHECKS = 1;
 -- 테스트용
