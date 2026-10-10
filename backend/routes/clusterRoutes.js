@@ -27,6 +27,7 @@ router.get(
 );
 
 
+// 같은 날짜 내부의 과분할 클러스터를 병합합니다.
 router.post(
     "/merge",
     mergeClusters
