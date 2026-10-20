@@ -412,31 +412,12 @@ function findRepresentativeArticle(
 
 // 두 클러스터의 병합 가능 여부와
 // 병합 점수를 계산합니다.
-function evaluateMerge(
+// 두 클러스터의 유사성을 계산합니다.
+// 병합과 날짜별 연결에서 공통으로 사용합니다.
+function evaluateClusterSimilarity(
     clusterA,
     clusterB
 ) {
-    /*
-     * 가장 먼저 날짜별 클러스터 구조를 보존합니다.
-     *
-     * 다른 날짜의 동일 사건은 병합 대상이 아니라
-     * 이후 클러스터 연결 기능에서 처리합니다.
-     */
-    if (
-        !clusterA.cluster_date ||
-        !clusterB.cluster_date ||
-        clusterA.cluster_date !==
-            clusterB.cluster_date
-    ) {
-        return {
-            mergeable: false,
-            score: 0,
-            reason:
-                "cluster_date_conflict"
-        };
-    }
-
-
     const centroidA =
         safeParseEmbedding(
             clusterA.centroid_embedding
@@ -712,6 +693,40 @@ function evaluateMerge(
 
         reason: null
     };
+}
+
+
+// 두 클러스터의 병합 가능 여부와
+// 병합 점수를 계산합니다.
+function evaluateMerge(
+    clusterA,
+    clusterB
+) {
+    /*
+     * 가장 먼저 날짜별 클러스터 구조를 보존합니다.
+     *
+     * 다른 날짜의 동일 사건은 병합 대상이 아니라
+     * 이후 클러스터 연결 기능에서 처리합니다.
+     */
+    if (
+        !clusterA.cluster_date ||
+        !clusterB.cluster_date ||
+        clusterA.cluster_date !==
+            clusterB.cluster_date
+    ) {
+        return {
+            mergeable: false,
+            score: 0,
+            reason:
+                "cluster_date_conflict"
+        };
+    }
+
+
+    return evaluateClusterSimilarity(
+        clusterA,
+        clusterB
+    );
 }
 
 
@@ -1043,5 +1058,6 @@ async function mergeClustersByDate({
 
 
 module.exports = {
-    mergeClustersByDate
+    mergeClustersByDate,
+    evaluateClusterSimilarity
 };

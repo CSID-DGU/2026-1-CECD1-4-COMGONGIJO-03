@@ -18,10 +18,11 @@ const ANALYSIS_COLUMNS = `
     aa.target_related,
     aa.target_mention_type,
     aa.negative_impact_type,
+    aa.media_influence,
     aa.issue_severity,
-    aa.public_sensitivity,
     aa.target_responsibility,
-    aa.spread_potential,
+    aa.norm_violation,
+    aa.similar_crisis_history,
     aa.risk_factor_reason,
     aa.cluster_key
 `;

@@ -1,9 +1,5 @@
 const db = require("../db");
 
-/*
- * AI 분석 결과와 클러스터링 결과를 article_analysis에 저장합니다.
- * 클러스터링 과정에서 기사 임베딩을 생성한 경우 함께 저장합니다.
- */
 async function insertFullAnalysis({
     articleId,
     clusterId,
@@ -31,10 +27,11 @@ async function insertFullAnalysis({
             target_related,
             target_mention_type,
             negative_impact_type,
+            media_influence,
             issue_severity,
-            public_sensitivity,
             target_responsibility,
-            spread_potential,
+            norm_violation,
+            similar_crisis_history,
             risk_factor_reason,
             risk_score,
             cluster_key,
@@ -46,7 +43,7 @@ async function insertFullAnalysis({
             ?, ?, ?, ?, ?, ?, ?,
             ?,
             ?, ?, ?,
-            ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?,
             ?, ?,
             ?, NOW()
         )
@@ -57,26 +54,37 @@ async function insertFullAnalysis({
             analysis.summary,
             analysis.sentiment_label,
             analysis.sentiment_score,
+
             analysis.target_name,
             analysis.issue_type,
             analysis.event_name,
             analysis.event_date,
             analysis.event_location,
-            JSON.stringify(analysis.event_entities || []),
-            JSON.stringify(analysis.event_keywords || []),
 
-            // BGE-M3 임베딩 배열은 JSON 문자열로 저장합니다.
+            JSON.stringify(
+                analysis.event_entities || []
+            ),
+
+            JSON.stringify(
+                analysis.event_keywords || []
+            ),
+
             articleEmbedding
-                ? JSON.stringify(articleEmbedding)
+                ? JSON.stringify(
+                    articleEmbedding
+                )
                 : null,
 
             analysis.target_related,
             analysis.target_mention_type,
             analysis.negative_impact_type,
+
+            analysis.media_influence,
             analysis.issue_severity,
-            analysis.public_sensitivity,
             analysis.target_responsibility,
-            analysis.spread_potential,
+            analysis.norm_violation,
+            analysis.similar_crisis_history,
+
             analysis.risk_factor_reason,
             riskScore,
             clusterKey,
@@ -87,11 +95,10 @@ async function insertFullAnalysis({
     return result.insertId;
 }
 
-/*
- * 기존 API에서 전달된 간단한 분석 결과를 저장
- * 기존 기능 호환을 위해 별도로 유지
- */
-async function insertLegacyAnalysis(articleId, analysis) {
+async function insertLegacyAnalysis(
+    articleId,
+    analysis
+) {
     const [result] = await db.query(
         `
         INSERT INTO article_analysis (
@@ -111,7 +118,8 @@ async function insertLegacyAnalysis(articleId, analysis) {
             analysis.sentiment_label,
             analysis.sentiment_score,
             analysis.risk_score,
-            analysis.analysis_status || "completed"
+            analysis.analysis_status ||
+                "completed"
         ]
     );
 

@@ -62,10 +62,13 @@ CREATE TABLE article_analysis (
   target_mention_type VARCHAR(50),
   negative_impact_type VARCHAR(100),
 
+  -- AHP 설문을 기반으로 사용하는 위험도 5개 팩터
+  media_influence FLOAT,
   issue_severity FLOAT,
-  public_sensitivity FLOAT,
   target_responsibility FLOAT,
-  spread_potential FLOAT,
+  norm_violation FLOAT,
+  similar_crisis_history FLOAT,
+
   risk_factor_reason TEXT,
 
   risk_score FLOAT,
@@ -74,8 +77,11 @@ CREATE TABLE article_analysis (
   analysis_status VARCHAR(20),
   analyzed_at DATETIME,
 
-  FOREIGN KEY (article_id) REFERENCES articles(article_id),
-  FOREIGN KEY (cluster_id) REFERENCES clusters(cluster_id)
+  FOREIGN KEY (article_id)
+    REFERENCES articles(article_id),
+
+  FOREIGN KEY (cluster_id)
+    REFERENCES clusters(cluster_id)
 );
 
 CREATE TABLE alerts (
@@ -89,6 +95,45 @@ CREATE TABLE alerts (
   alert_status VARCHAR(50),
   created_at DATETIME NOT NULL,
 
-  FOREIGN KEY (article_id) REFERENCES articles(article_id),
-  FOREIGN KEY (cluster_id) REFERENCES clusters(cluster_id)
+  FOREIGN KEY (article_id)
+    REFERENCES articles(article_id),
+
+  FOREIGN KEY (cluster_id)
+    REFERENCES clusters(cluster_id)
+);
+
+CREATE TABLE cluster_links (
+  link_id INT AUTO_INCREMENT PRIMARY KEY,
+
+  -- 시간상 이전 클러스터
+  from_cluster_id INT NOT NULL,
+
+  -- 시간상 이후 클러스터
+  to_cluster_id INT NOT NULL,
+
+  -- 현재는 날짜가 다른 동일 사건의 연결에 사용
+  link_type VARCHAR(50)
+    NOT NULL
+    DEFAULT 'same_event',
+
+  -- 두 클러스터의 유사도 점수
+  similarity_score FLOAT NOT NULL,
+
+  created_at DATETIME NOT NULL
+    DEFAULT CURRENT_TIMESTAMP,
+
+  -- 동일한 연결의 중복 생성을 방지
+  UNIQUE KEY uq_cluster_link (
+    from_cluster_id,
+    to_cluster_id,
+    link_type
+  ),
+
+  FOREIGN KEY (from_cluster_id)
+    REFERENCES clusters(cluster_id)
+    ON DELETE CASCADE,
+
+  FOREIGN KEY (to_cluster_id)
+    REFERENCES clusters(cluster_id)
+    ON DELETE CASCADE
 );
