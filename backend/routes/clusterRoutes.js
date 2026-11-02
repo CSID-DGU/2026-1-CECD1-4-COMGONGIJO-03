@@ -1,53 +1,35 @@
-const express =
-    require("express");
+const express = require("express");
 
 const {
     getClusterList,
     getClusterArticles
-} = require(
-    "../controllers/clusterController"
-);
+} = require("../controllers/clusterController");
 
 const {
     mergeClusters
-} = require(
-    "../controllers/clusterMergeController"
-);
+} = require("../controllers/clusterMergeController");
 
 const {
     linkClusters,
     getLinks
-} = require(
-    "../controllers/clusterLinkController"
-);
+} = require("../controllers/clusterLinkController");
 
-const router =
-    express.Router();
+const {
+    splitClustersController
+} = require("../controllers/clusterSplitController");
 
-router.get(
-    "/",
-    getClusterList
-);
+const router = express.Router();
 
-router.post(
-    "/merge",
-    mergeClusters
-);
+router.get("/", getClusterList);
 
-router.post(
-    "/link",
-    linkClusters
-);
+router.post("/split", splitClustersController);
 
-router.get(
-    "/:cluster_id/links",
-    getLinks
-);
+router.post("/merge", mergeClusters);
 
-router.get(
-    "/:cluster_id/articles",
-    getClusterArticles
-);
+router.post("/link", linkClusters);
 
-module.exports =
-    router;
+router.get("/:cluster_id/links", getLinks);
+
+router.get("/:cluster_id/articles", getClusterArticles);
+
+module.exports = router;
