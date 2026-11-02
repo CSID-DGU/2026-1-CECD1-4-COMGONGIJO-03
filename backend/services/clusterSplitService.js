@@ -1,3 +1,4 @@
+
 const repository = require("../repositories/clusterSplitRepository");
 const { evaluateClusterSimilarity } = require("./clusterMergeService");
 const { cosineSimilarity } = require("../ai/embedding");
@@ -132,6 +133,7 @@ function getMetadata(groupArticles, sourceCluster) {
     };
 }
 
+/*
 // Complete-link 방식으로 기사들을 그룹화합니다.
 // 두 그룹의 모든 기사 쌍이 기준을 통과해야 합칩니다.
 function completeLinkGroups(articles, threshold) {
@@ -215,6 +217,111 @@ function completeLinkGroups(articles, threshold) {
         indices => indices.map(index => articles[index])
     );
 }
+*/
+
+// DBSCAN 방식으로 기사들을 그룹화합니다.
+function dbscanGroups(articles, threshold) {
+    const count = articles.length;
+    if (!count) return [];
+
+    // 자기 자신을 포함한 최소 이웃 수입니다.
+    const minSamples = count < 5 ? 2 : 3;
+
+    const neighbors = Array.from(
+        { length: count },
+        (_, i) => [i]
+    );
+
+    // 기존 유사도 계산 방식과 강제 불일치 조건을 재사용합니다.
+    for (let i = 0; i < count; i++) {
+        for (let j = i + 1; j < count; j++) {
+            const result = evaluateClusterSimilarity(
+                {
+                    ...articles[i],
+                    centroid_embedding:
+                        articles[i].article_embedding
+                },
+                {
+                    ...articles[j],
+                    centroid_embedding:
+                        articles[j].article_embedding
+                }
+            );
+
+            if (
+                result.mergeable &&
+                result.score >= threshold
+            ) {
+                neighbors[i].push(j);
+                neighbors[j].push(i);
+            }
+        }
+    }
+
+    // -1은 미방문, -2는 이상치를 의미합니다.
+    const labels = Array(count).fill(-1);
+
+    const core = neighbors.map(
+        items => items.length >= minSamples
+    );
+
+    let clusterNumber = 0;
+
+    for (let i = 0; i < count; i++) {
+        if (labels[i] !== -1) continue;
+
+        if (!core[i]) {
+            labels[i] = -2;
+            continue;
+        }
+
+        labels[i] = clusterNumber;
+
+        const queue = [i];
+
+        for (
+            let head = 0;
+            head < queue.length;
+            head++
+        ) {
+            const current = queue[head];
+
+            // 경계점에서는 군집을 확장하지 않습니다.
+            if (!core[current]) continue;
+
+            for (const neighbor of neighbors[current]) {
+                if (labels[neighbor] === -2) {
+                    // 이상치를 경계점으로 편입합니다.
+                    labels[neighbor] = clusterNumber;
+                } else if (labels[neighbor] === -1) {
+                    labels[neighbor] = clusterNumber;
+
+                    if (core[neighbor]) {
+                        queue.push(neighbor);
+                    }
+                }
+            }
+        }
+
+        clusterNumber++;
+    }
+
+    const groups = Array.from(
+        { length: clusterNumber },
+        () => []
+    );
+
+    for (let i = 0; i < count; i++) {
+        if (labels[i] >= 0) {
+            groups[labels[i]].push(articles[i]);
+        } else {
+            // 이상치는 개별 클러스터로 분리합니다.
+            groups.push([articles[i]]);
+        }
+    }
+
+    return groups;
+}
 
 // 클러스터 분할 계획을 작성합니다.
 function buildSplitPlan(
@@ -292,7 +399,11 @@ function buildSplitPlan(
         };
     }
 
-    const separated = completeLinkGroups(valid, threshold);
+    // 기존 Complete-link 방식입니다.
+    // const separated = completeLinkGroups(valid, threshold);
+
+    // 변경된 DBSCAN 방식입니다.
+    const separated = dbscanGroups(valid, threshold);
 
     if (separated.length === 1) {
         return {
@@ -504,6 +615,12 @@ async function splitClusters({
 module.exports = {
     splitClusters,
     buildSplitPlan,
-    completeLinkGroups,
+
+    // 기존 Complete-link 방식입니다.
+    // completeLinkGroups,
+
+    // 변경된 DBSCAN 방식입니다.
+    dbscanGroups,
+
     validateOptions
 };
