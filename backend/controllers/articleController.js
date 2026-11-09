@@ -32,17 +32,11 @@ async function createArticle(req, res) {
             });
         }
 
-        return res.json({
+        return res.status(202).json({
             success: true,
-            message: "기사 저장 + AI 분석 + 분석 결과 저장 + 클러스터링 완료",
+            message: "기사 저장 완료, AI 분석 대기 중",
             article_id: result.articleId,
-            analysis_id: result.analysisId,
-            cluster_id: result.clusterId,
-            cluster_key: result.clusterKey,
-            risk_score: result.riskScore,
-            alert_created: result.alertCreated,
-            alert_id: result.alertId,
-            analysis: result.analysis
+            analysis_status: result.analysisStatus
         });
     } catch (error) {
         console.error(error);

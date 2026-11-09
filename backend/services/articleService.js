@@ -11,51 +11,56 @@ const {
 
 async function createAndAnalyzeArticle(article) {
     const existingArticle =
-        await articleRepository.findIdByUrl(
-            article.url
-        );
+        await articleRepository.findIdByUrl(article.url);
 
     if (existingArticle) {
         return {
             duplicate: true,
-            articleId:
-                existingArticle.article_id
+            articleId: existingArticle.article_id
         };
     }
 
     const articleId =
-        await articleRepository.insertArticle(
-            article
-        );
+        await articleRepository.insertArticle(article);
 
-    const analysis =
-        await analyzeArticle({
-            title: article.title,
-            content: article.content,
-            source: article.source,
-            published_at:
-                article.published_at
-        });
+    return {
+        duplicate: false,
+        articleId,
+        analysisStatus: "pending"
+    };
+}
 
-    /*
-     * 유사위기 이력은 AI에게 추측시키지 않고
-     * 기존 DB의 과거 사건을 이용하여 계산합니다.
-     */
+async function processArticleAnalysis(article) {
+    const articleId = article.article_id;
+
+    const existing =
+        await articleRepository.findByIdWithAnalysis(articleId);
+
+    if (!existing) {
+        throw new Error(`Article not found: ${articleId}`);
+    }
+
+    if (existing.analysis_id != null) {
+        return {
+            skipped: true,
+            articleId
+        };
+    }
+
+    const analysis = await analyzeArticle({
+        title: article.title,
+        content: article.content,
+        source: article.source,
+        published_at: article.published_at
+    });
+
     analysis.similar_crisis_history =
         await calculateSimilarCrisisHistory(
             analysis,
             article
         );
 
-    console.log(
-        "AI 분석 결과:",
-        analysis
-    );
-
-    const riskScore =
-        calculateRiskScore(
-            analysis
-        );
+    const riskScore = calculateRiskScore(analysis);
 
     const {
         clusterId,
@@ -69,29 +74,27 @@ async function createAndAnalyzeArticle(article) {
     });
 
     const analysisId =
-        await analysisRepository
-            .insertFullAnalysis({
-                articleId,
-                clusterId,
-                analysis,
-                riskScore,
-                clusterKey,
-                articleEmbedding
-            });
+        await analysisRepository.insertFullAnalysis({
+            articleId,
+            clusterId,
+            analysis,
+            riskScore,
+            clusterKey,
+            articleEmbedding
+        });
 
     const {
         alertCreated,
         alertId
-    } =
-        await createClusterAlertIfNeeded({
-            articleId,
-            clusterId,
-            analysis,
-            riskScore
-        });
+    } = await createClusterAlertIfNeeded({
+        articleId,
+        clusterId,
+        analysis,
+        riskScore
+    });
 
     return {
-        duplicate: false,
+        skipped: false,
         articleId,
         analysisId,
         clusterId,
@@ -145,5 +148,6 @@ async function saveLegacyAnalysis(
 
 module.exports = {
     createAndAnalyzeArticle,
+    processArticleAnalysis,
     saveLegacyAnalysis
 };

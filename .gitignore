@@ -1,4 +1,9 @@
-backend/node_modules/
+﻿backend/node_modules/
 backend/.env
 
 test/Crawling/node_modules/
+
+# Docker environment secrets
+.env.docker
+.env.docker.*
+!.env.docker.example

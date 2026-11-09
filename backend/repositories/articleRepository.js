@@ -163,6 +163,26 @@ async function findByIdWithAnalysis(articleId) {
     return rows[0] || null;
 }
 
+
+async function findUnanalyzedArticles(limit = 10) {
+    const [rows] = await db.query(
+        `
+        SELECT a.*
+        FROM articles a
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM article_analysis aa
+            WHERE aa.article_id = a.article_id
+        )
+        ORDER BY a.collected_at ASC, a.article_id ASC
+        LIMIT ?
+        `,
+        [limit]
+    );
+
+    return rows;
+}
+
 module.exports = {
     findIdByUrl,
     insertArticle,
@@ -171,5 +191,6 @@ module.exports = {
     findAnalyzedArticles,
     findRiskyArticles,
     findAll,
-    findByIdWithAnalysis
+    findByIdWithAnalysis,
+    findUnanalyzedArticles
 };
