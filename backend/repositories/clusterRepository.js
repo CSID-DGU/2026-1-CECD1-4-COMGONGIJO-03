@@ -2,8 +2,8 @@ const db = require("../db");
 
 // 오늘 생성되거나 갱신된 클러스터 후보와
 // 클러스터링 비교에 필요한 대표값/기사 정보를 조회합니다.
-async function findRecentCandidates() {
-    const [rows] = await db.query(
+async function findRecentCandidates(connection = db) {
+    const [rows] = await connection.query(
         `
         SELECT
             c.cluster_id,
@@ -30,11 +30,17 @@ async function findRecentCandidates() {
                 SELECT aa2.analysis_id
                 FROM article_analysis aa2
                 WHERE aa2.cluster_id = c.cluster_id
+                  AND COALESCE(
+                      aa2.spam_override,
+                      aa2.target_related
+                  ) = 1
                 ORDER BY aa2.analyzed_at DESC
                 LIMIT 1
             )
 
         WHERE c.last_detected >= CURDATE()
+          AND c.cluster_status = 'active'
+          AND c.article_count > 0
 
         ORDER BY c.last_detected DESC
         `
@@ -45,8 +51,12 @@ async function findRecentCandidates() {
 
 // 기존 클러스터에 새 기사가 편입되었을 때
 // 마지막 감지 시간, 기사 수, 최대 위험도를 갱신합니다.
-async function updateMatchedCluster(clusterId, riskScore) {
-    await db.query(
+async function updateMatchedCluster(
+    clusterId,
+    riskScore,
+    connection = db
+) {
+    await connection.query(
         `
         UPDATE clusters
         SET
@@ -64,9 +74,10 @@ async function updateClusterRepresentation(
     clusterId,
     centroidEmbedding,
     representativeArticleId,
-    representativeTitle
+    representativeTitle,
+    connection = db
 ) {
-    await db.query(
+    await connection.query(
         `
         UPDATE clusters
         SET
@@ -93,8 +104,8 @@ async function createCluster({
     centroidEmbedding,
     issueType,
     riskScore
-}) {
-    const [result] = await db.query(
+}, connection = db) {
+    const [result] = await connection.query(
         `
         INSERT INTO clusters (
             cluster_key,
@@ -152,6 +163,7 @@ async function findAllWithArticles() {
 
         LEFT JOIN article_analysis aa
             ON c.cluster_id = aa.cluster_id
+            AND COALESCE(aa.spam_override, aa.target_related) = 1
 
         LEFT JOIN articles a
             ON aa.article_id = a.article_id
@@ -190,8 +202,8 @@ async function findById(clusterId) {
 
 // 특정 클러스터에 포함된 기사들과
 // medoid/분화 계산에 필요한 분석 정보를 조회합니다.
-async function findArticlesByClusterId(clusterId) {
-    const [rows] = await db.query(
+async function findArticlesByClusterId(clusterId, connection = db) {
+    const [rows] = await connection.query(
         `
         SELECT
             a.article_id,
@@ -216,6 +228,7 @@ async function findArticlesByClusterId(clusterId) {
             ON aa.article_id = a.article_id
 
         WHERE aa.cluster_id = ?
+            AND COALESCE(aa.spam_override, aa.target_related) = 1
 
         ORDER BY
             aa.risk_score DESC,
@@ -227,6 +240,109 @@ async function findArticlesByClusterId(clusterId) {
     return rows;
 }
 
+async function findNormalArticlesForUpdate(connection, clusterId) {
+    const [rows] = await connection.query(
+        `
+        SELECT
+            a.article_id,
+            a.title,
+            aa.article_embedding,
+            aa.risk_score,
+            aa.analyzed_at
+        FROM article_analysis aa
+        INNER JOIN articles a
+            ON a.article_id = aa.article_id
+        WHERE aa.cluster_id = ?
+          AND COALESCE(aa.spam_override, aa.target_related) = 1
+        ORDER BY aa.article_id
+        FOR UPDATE
+        `,
+        [clusterId]
+    );
+
+    return rows;
+}
+
+async function updateClusterAfterSpamChange(
+    connection,
+    clusterId,
+    {
+        centroidEmbedding,
+        representativeArticleId,
+        representativeTitle,
+        articleCount,
+        maxRiskScore,
+        clusterStatus
+    }
+) {
+    const [result] = await connection.query(
+        `
+        UPDATE clusters
+        SET
+            centroid_embedding = ?,
+            representative_article_id = ?,
+            representative_title = ?,
+            article_count = ?,
+            max_risk_score = ?,
+            cluster_status = ?
+        WHERE cluster_id = ?
+        `,
+        [
+            centroidEmbedding == null
+                ? null
+                : JSON.stringify(centroidEmbedding),
+            representativeArticleId,
+            representativeTitle,
+            articleCount,
+            maxRiskScore,
+            clusterStatus,
+            clusterId
+        ]
+    );
+
+    return result.affectedRows;
+}
+
+async function deleteEmptyCluster(connection, clusterId) {
+    // 알림 이력은 유지하고 클러스터 참조만 해제합니다.
+    await connection.query(
+        `
+        UPDATE alerts
+        SET cluster_id = NULL
+        WHERE cluster_id = ?
+        `,
+        [clusterId]
+    );
+
+    // 스팸기사 등 기존 참조의 클러스터 연결을 해제합니다.
+    await connection.query(
+        `
+        UPDATE article_analysis
+        SET cluster_id = NULL,
+            cluster_key = NULL
+        WHERE cluster_id = ?
+        `,
+        [clusterId]
+    );
+
+    // cluster_links는 ON DELETE CASCADE로 자동 삭제됩니다.
+    const [result] = await connection.query(
+        `
+        DELETE FROM clusters
+        WHERE cluster_id = ?
+          AND NOT EXISTS (
+              SELECT 1
+              FROM article_analysis
+              WHERE cluster_id = ?
+                AND COALESCE(spam_override, target_related) = 1
+          )
+        `,
+        [clusterId, clusterId]
+    );
+
+    return result.affectedRows;
+}
+
 module.exports = {
     findRecentCandidates,
     updateMatchedCluster,
@@ -234,5 +350,8 @@ module.exports = {
     createCluster,
     findAllWithArticles,
     findById,
-    findArticlesByClusterId
+    findArticlesByClusterId,
+    findNormalArticlesForUpdate,
+    updateClusterAfterSpamChange,
+    deleteEmptyCluster
 };

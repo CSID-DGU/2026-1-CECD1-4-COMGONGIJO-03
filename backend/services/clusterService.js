@@ -218,10 +218,13 @@ function calculateUpdatedCentroid(
 async function findBestCluster(
     analysis,
     title,
-    newEmbedding
+    newEmbedding,
+    connection = null
 ) {
     const candidateClusters =
-        await clusterRepository.findRecentCandidates();
+        await clusterRepository.findRecentCandidates(
+            connection ?? undefined
+        );
 
     let bestCluster = null;
     let bestScore = 0;
@@ -421,11 +424,14 @@ async function findBestCluster(
 async function findMedoid(
     clusterId,
     centroid,
-    currentArticle
+    currentArticle,
+    connection = null
 ) {
     const articles =
-        await clusterRepository
-            .findArticlesByClusterId(clusterId);
+        await clusterRepository.findArticlesByClusterId(
+            clusterId,
+            connection ?? undefined
+        );
 
     const candidates = [];
 
@@ -472,27 +478,30 @@ async function assignCluster({
     articleId,
     analysis,
     title,
-    riskScore
+    riskScore,
+    connection = null,
+    articleEmbedding = undefined
 }) {
-    // 3번: 제목 + 요약문 전체를 BGE-M3로 임베딩합니다.
     const embeddingText =
         buildEmbeddingText(
             title,
             analysis.summary
         );
 
-    let newEmbedding = null;
+    let newEmbedding = articleEmbedding;
 
-    try {
-        newEmbedding =
-            await getCachedEmbedding(
-                embeddingText
+    if (newEmbedding === undefined) {
+        newEmbedding = null;
+
+        try {
+            newEmbedding =
+                await getCachedEmbedding(embeddingText);
+        } catch (error) {
+            console.error(
+                "기사 임베딩 생성 실패:",
+                error.message
             );
-    } catch (error) {
-        console.error(
-            "기사 임베딩 생성 실패:",
-            error.message
-        );
+        }
     }
 
     const clusterIssueType =
@@ -514,7 +523,8 @@ async function assignCluster({
     } = await findBestCluster(
         analysis,
         title,
-        newEmbedding
+        newEmbedding,
+        connection
     );
 
     let clusterId;
@@ -523,10 +533,8 @@ async function assignCluster({
         bestCluster &&
         bestScore >= CLUSTER_MATCH_THRESHOLD
     ) {
-        clusterId =
-            bestCluster.cluster_id;
+        clusterId = bestCluster.cluster_id;
 
-        // 새 기사를 반영하여 centroid를 갱신합니다.
         const oldCentroid =
             safeParseEmbedding(
                 bestCluster.centroid_embedding
@@ -539,36 +547,35 @@ async function assignCluster({
                 bestCluster.article_count
             );
 
-        await clusterRepository
-            .updateMatchedCluster(
-                clusterId,
-                riskScore
-            );
+        await clusterRepository.updateMatchedCluster(
+            clusterId,
+            riskScore,
+            connection ?? undefined
+        );
 
-        // 4번: 새 centroid 기준 medoid를 다시 선정합니다.
-        const medoid =
-            await findMedoid(
-                clusterId,
-                newCentroid,
-                {
-                    articleId,
-                    title,
-                    embedding: newEmbedding
-                }
-            );
+        const medoid = await findMedoid(
+            clusterId,
+            newCentroid,
+            {
+                articleId,
+                title,
+                embedding: newEmbedding
+            },
+            connection
+        );
 
-        await clusterRepository
-            .updateClusterRepresentation(
-                clusterId,
-                JSON.stringify(newCentroid),
-                medoid.articleId,
-                medoid.title
-            );
-
+        await clusterRepository.updateClusterRepresentation(
+            clusterId,
+            newCentroid == null
+                ? null
+                : JSON.stringify(newCentroid),
+            medoid.articleId,
+            medoid.title,
+            connection ?? undefined
+        );
     } else {
-        // 새 클러스터에서는 첫 기사 자체가 centroid이자 medoid입니다.
-        clusterId =
-            await clusterRepository.createCluster({
+        clusterId = await clusterRepository.createCluster(
+            {
                 clusterKey,
                 representativeTitle: title,
                 representativeArticleId: articleId,
@@ -578,14 +585,14 @@ async function assignCluster({
                         : null,
                 issueType: clusterIssueType,
                 riskScore
-            });
+            },
+            connection ?? undefined
+        );
     }
 
     return {
         clusterId,
         clusterKey,
-
-        // article_analysis 저장 시 같이 넣기 위해 반환합니다.
         articleEmbedding: newEmbedding
     };
 }
@@ -664,8 +671,102 @@ async function getClusterWithArticles(clusterId) {
     };
 }
 
+
+async function recalculateClusterAfterSpamChange(connection, clusterId) {
+    const articles =
+        await clusterRepository.findNormalArticlesForUpdate(
+            connection,
+            clusterId
+        );
+
+    const articleCount = articles.length;
+
+    // 정상 기사가 하나도 남지 않은 경우 클러스터 삭제
+    if (articleCount === 0) {
+        await clusterRepository.deleteEmptyCluster(
+            connection,
+            clusterId
+        );
+
+        return;
+    }
+
+    // 정상 기사 중 유효한 임베딩만 추출
+    const embeddedArticles = articles
+        .map(article => ({
+            ...article,
+            embedding: safeParseEmbedding(
+                article.article_embedding
+            )
+        }))
+        .filter(article =>
+            Array.isArray(article.embedding) &&
+            article.embedding.length > 0 &&
+            article.embedding.every(Number.isFinite)
+        );
+
+    let centroid = null;
+    let representative = articles[0];
+
+    if (embeddedArticles.length > 0) {
+        const dimension = embeddedArticles[0].embedding.length;
+
+        const validArticles = embeddedArticles.filter(
+            article => article.embedding.length === dimension
+        );
+
+        centroid = Array(dimension).fill(0);
+
+        for (const article of validArticles) {
+            for (let i = 0; i < dimension; i++) {
+                centroid[i] += article.embedding[i];
+            }
+        }
+
+        centroid = centroid.map(
+            value => value / validArticles.length
+        );
+
+        // centroid와 가장 가까운 기사를 대표기사로 선정
+        let bestSimilarity = -Infinity;
+
+        for (const article of validArticles) {
+            const similarity = cosineSimilarity(
+                centroid,
+                article.embedding
+            );
+
+            if (similarity > bestSimilarity) {
+                bestSimilarity = similarity;
+                representative = article;
+            }
+        }
+    }
+
+    const maxRiskScore = Math.max(
+        0,
+        ...articles.map(article =>
+            Number(article.risk_score) || 0
+        )
+    );
+
+    await clusterRepository.updateClusterAfterSpamChange(
+        connection,
+        clusterId,
+        {
+            centroidEmbedding: centroid,
+            representativeArticleId: representative.article_id,
+            representativeTitle: representative.title,
+            articleCount,
+            maxRiskScore,
+            clusterStatus: "active"
+        }
+    );
+}
+
 module.exports = {
     assignCluster,
     getClusters,
-    getClusterWithArticles
+    getClusterWithArticles,
+    recalculateClusterAfterSpamChange
 };

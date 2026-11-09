@@ -59,6 +59,7 @@ CREATE TABLE article_analysis (
   article_embedding LONGTEXT,
 
   target_related BOOLEAN,
+  spam_override BOOLEAN DEFAULT NULL,
   target_mention_type VARCHAR(50),
   negative_impact_type VARCHAR(100),
 

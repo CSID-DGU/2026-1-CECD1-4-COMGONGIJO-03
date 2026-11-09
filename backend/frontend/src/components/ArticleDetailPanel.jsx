@@ -28,7 +28,13 @@ function scoreLabel(score) {
   return number.toFixed(2);
 }
 
-export default function ArticleDetailPanel({ article, hasAlert }) {
+export default function ArticleDetailPanel({
+  article,
+  hasAlert,
+  isSpam = false,
+  onSpamToggle,
+  spamLoading = false
+}) {
   if (!article) {
     return (
       <section className="detailPanel">
@@ -118,6 +124,23 @@ export default function ArticleDetailPanel({ article, hasAlert }) {
           {entities.length ? entities.map((entity) => <span key={entity}>{entity}</span>) : <span>-</span>}
         </div>
       </div>
+
+      {onSpamToggle && (
+        <div className="detailTopControls">
+          <button
+            className="secondaryButton"
+            type="button"
+            onClick={onSpamToggle}
+            disabled={spamLoading}
+          >
+            {spamLoading
+              ? "처리 중..."
+              : isSpam
+                ? "스팸 해제"
+                : "스팸으로 이동"}
+          </button>
+        </div>
+      )}
     </section>
   );
 }

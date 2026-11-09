@@ -794,3 +794,33 @@ dd {
     width: calc(100vw - 20px);
   }
 }
+
+.clusterGroup {
+  background-color: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+
+.clusterGroupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.clusterMembers {
+  margin-top: 8px;
+  padding: 8px 0 0 14px;
+  border-top: 1px solid #e2e8f0;
+  border-left: 3px solid #cbd5e1;
+}
+
+.clusterMembers .timelineArticle {
+  margin-bottom: 8px;
+}

@@ -2,6 +2,7 @@ services:
   ollama:
     image: ollama/ollama:latest
     restart: unless-stopped
+    gpus: all
     volumes:
       - ollama_data:/root/.ollama
   crawler-worker:

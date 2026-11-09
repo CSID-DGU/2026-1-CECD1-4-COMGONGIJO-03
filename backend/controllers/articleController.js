@@ -1,7 +1,9 @@
 const articleRepository = require("../repositories/articleRepository");
 const {
     createAndAnalyzeArticle,
-    saveLegacyAnalysis
+    saveLegacyAnalysis,
+    moveArticleToSpam: moveArticleToSpamService,
+    restoreArticleFromSpam: restoreArticleFromSpamService
 } = require("../services/articleService");
 
 async function createArticle(req, res) {
@@ -205,6 +207,83 @@ async function getArticleById(req, res) {
     }
 }
 
+async function getSpamArticles(req, res) {
+    try {
+        const articles = await articleRepository.findSpamArticles();
+
+        return res.json({
+            success: true,
+            count: articles.length,
+            articles
+        });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            success: false,
+            message: "스팸기사 조회 실패"
+        });
+    }
+}
+
+async function moveArticleToSpam(req, res) {
+    try {
+        const articleId = Number(req.params.articleId);
+
+        if (!Number.isSafeInteger(articleId) || articleId <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "올바르지 않은 기사 ID입니다."
+            });
+        }
+
+        const result = await moveArticleToSpamService(articleId);
+
+        if (!result.success) {
+            return res.status(404).json(result);
+        }
+
+        return res.json(result);
+    } catch (error) {
+        console.error("스팸 전환 실패:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "스팸 전환 중 오류가 발생했습니다."
+        });
+    }
+}
+
+async function restoreArticleFromSpam(req, res) {
+    try {
+        const articleId = Number(req.params.articleId);
+
+        if (!Number.isSafeInteger(articleId) || articleId <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: "올바르지 않은 기사 ID입니다."
+            });
+        }
+
+        const result = await restoreArticleFromSpamService(articleId);
+
+        if (!result.success) {
+            const status =
+                result.reason === "ARTICLE_NOT_FOUND" ? 404 : 409;
+
+            return res.status(status).json(result);
+        }
+
+        return res.json(result);
+    } catch (error) {
+        console.error("스팸 복구 실패:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "스팸 복구 중 오류가 발생했습니다."
+        });
+    }
+}
+
 module.exports = {
     createArticle,
     saveAnalysis,
@@ -212,5 +291,8 @@ module.exports = {
     getAnalyzedArticles,
     getRiskyArticles,
     getArticles,
-    getArticleById
+    getArticleById,
+    getSpamArticles,
+    moveArticleToSpam,
+    restoreArticleFromSpam
 };

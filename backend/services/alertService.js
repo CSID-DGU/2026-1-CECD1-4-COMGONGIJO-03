@@ -3,13 +3,18 @@ const alertRepository = require("../repositories/alertRepository");
 const RISK_THRESHOLD = 0.6;
 
 async function createClusterAlertIfNeeded({ articleId, clusterId, analysis, riskScore }) {
-    if (riskScore < RISK_THRESHOLD || !analysis.alert_topic) {
+    if (
+    analysis.target_related !== true ||
+    clusterId == null ||
+    riskScore < RISK_THRESHOLD ||
+    !analysis.alert_topic
+    ) {
         return {
             alertCreated: false,
             alertId: null
         };
-    }
-
+    } 
+    
     const existingAlert = await alertRepository.findByClusterId(clusterId);
     if (existingAlert) {
         return {

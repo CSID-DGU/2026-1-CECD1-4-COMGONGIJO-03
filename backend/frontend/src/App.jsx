@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import DashboardPage from "./pages/DashboardPage";
 import RiskyArticlesPage from "./pages/RiskyArticlesPage";
 import AlertsPage from "./pages/AlertsPage";
+import SpamArticlesPage from "./pages/SpamArticlesPage";
 import { getAlerts } from "./services/articles";
 
 const navItems = [
   { id: "dashboard", label: "기사 목록" },
   { id: "risky", label: "위험 기사" },
-  { id: "alerts", label: "알림" }
+  { id: "alerts", label: "알림" },
+  { id: "spam", label: "스팸기사함" }
 ];
 
 const ALERT_CHECK_INTERVAL_MS = 5000;
@@ -41,7 +43,7 @@ function isUserTyping() {
 export default function App() {
   const [activePage, setActivePage] = useState("dashboard");
   const [toastAlerts, setToastAlerts] = useState([]);
-  const [pageRefreshKey, setPageRefreshKey] = useState(0);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const knownAlertIdsRef = useRef(new Set());
   const initializedRef = useRef(false);
@@ -126,12 +128,10 @@ export default function App() {
     const intervalId = window.setInterval(() => {
       if (isUserTyping()) return;
 
-      setPageRefreshKey((prevKey) => prevKey + 1);
+      setRefreshTick((prev) => prev + 1);
     }, PAGE_REFRESH_INTERVAL_MS);
 
-    return () => {
-      window.clearInterval(intervalId);
-    };
+    return () => window.clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
@@ -170,15 +170,10 @@ export default function App() {
       </header>
 
       <main>
-        {activePage === "dashboard" && (
-          <DashboardPage key={`dashboard-${pageRefreshKey}`} />
-        )}
-        {activePage === "risky" && (
-          <RiskyArticlesPage key={`risky-${pageRefreshKey}`} />
-        )}
-        {activePage === "alerts" && (
-          <AlertsPage key={`alerts-${pageRefreshKey}`} />
-        )}
+        {activePage === "dashboard" && <DashboardPage refreshTick={refreshTick} />}
+        {activePage === "risky" && <RiskyArticlesPage refreshTick={refreshTick} />}
+        {activePage === "alerts" && <AlertsPage refreshTick={refreshTick} />}
+        {activePage === "spam" && <SpamArticlesPage refreshTick={refreshTick} />}
       </main>
 
       <div className="toastContainer" aria-live="polite" aria-label="새 알림">

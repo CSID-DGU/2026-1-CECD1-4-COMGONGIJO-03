@@ -11,7 +11,9 @@ import {
   getAnalyzedArticles,
   getArticleById,
   getArticleByUrl,
-  getArticles
+  getArticles,
+  getClusters,
+  moveArticleToSpam
 } from "../services/articles";
 import {
   filterSampleArticles,
@@ -114,7 +116,7 @@ function mergeArticles(rawArticles, analyzedArticles) {
   return mergedArticles;
 }
 
-export default function DashboardPage() {
+export default function DashboardPage({ refreshTick }) {
   const [articles, setArticles] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [selectedArticle, setSelectedArticle] = useState(null);
@@ -128,12 +130,23 @@ export default function DashboardPage() {
   const [articleForm, setArticleForm] = useState(emptyArticleForm);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [spamLoading, setSpamLoading] = useState(false);
+  const [spamError, setSpamError] = useState("");
   const [error, setError] = useState("");
   const [sampleMode, setSampleMode] = useState(false);
   const [sampleReason, setSampleReason] = useState("");
   const [formMessage, setFormMessage] = useState("");
   const [formError, setFormError] = useState("");
+  const [clusters, setClusters] = useState([]);
+  const [expandedClusters, setExpandedClusters] = useState({});
 
+  const toggleCluster = (clusterId) => {
+    setExpandedClusters((current) => ({
+      ...current,
+      [clusterId]: !current[clusterId]
+    }));
+  };
+  
   const useSampleData = (keyword, reason) => {
     const nextArticles = filterSampleArticles(keyword);
     setArticles(nextArticles);
@@ -147,11 +160,16 @@ export default function DashboardPage() {
     setLoading(true);
     setError("");
     try {
-      const [rawResponse, analyzedResponse, alertsResponse] = await Promise.all([
-        getArticles(keyword),
-        getAnalyzedArticles(),
-        getAlerts()
-      ]);
+      const [rawResponse, analyzedResponse, alertsResponse, clustersResponse] =
+        await Promise.all([
+          getArticles(keyword),
+          getAnalyzedArticles(),
+          getAlerts(),
+          getClusters().catch((error) => {
+            console.error("클러스터 조회 실패:", error);
+            return { data: { clusters: [] } };
+          })
+        ]);
 
       const rawArticles = rawResponse.data.articles || [];
       const analyzedArticles = analyzedResponse.data.articles || [];
@@ -159,6 +177,7 @@ export default function DashboardPage() {
 
       setArticles(mergedArticles);
       setAlerts(alertsResponse.data.alerts || []);
+      setClusters(clustersResponse.data.clusters || []);
       setSelectedArticle((current) => current || mergedArticles[0] || null);
       setSampleMode(false);
       setSampleReason("");
@@ -173,6 +192,45 @@ export default function DashboardPage() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (refreshTick === 0 || screenMode !== "list") return;
+
+    let cancelled = false;
+
+    async function refreshArticles() {
+      try {
+        const [rawResponse, analyzedResponse, alertsResponse, clustersResponse] =
+          await Promise.all([
+            getArticles(query.trim()),
+            getAnalyzedArticles(),
+            getAlerts(),
+            getClusters().catch((error) => {
+              console.error("클러스터 조회 실패:", error);
+              return { data: { clusters: [] } };
+            })
+          ]);
+
+        if (cancelled) return;
+
+        setArticles(
+          mergeArticles(
+            rawResponse.data.articles || [],
+            analyzedResponse.data.articles || []
+          )
+        );
+        setAlerts(alertsResponse.data.alerts || []);
+        setClusters(clustersResponse.data.clusters || []);
+      } catch (error) {
+        console.error("기사 자동 갱신 실패:", error);
+      }
+    }
+
+    refreshArticles();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshTick, screenMode]);
   const filteredArticles = useMemo(() => {
     return articles
       .filter((article) => (activeTab === "sns" ? isSocialArticle(article) : !isSocialArticle(article)))
@@ -212,6 +270,95 @@ export default function DashboardPage() {
     return filteredArticles.filter((article) => getDateKey(article) === selectedDate);
   }, [filteredArticles, selectedDate]);
 
+
+  const displayItems = useMemo(() => {
+    const articleMap = new Map(
+      articles.map((article) => [
+        String(article.article_id),
+        article
+      ])
+    );
+
+    const visibleIds = new Set(
+      dateArticles.map((article) => String(article.article_id))
+    );
+
+    const assignedIds = new Set();
+    const items = [];
+
+    for (const cluster of clusters) {
+      const members = (cluster.articles || []).map((member) => {
+        const id = String(member.article_id);
+        assignedIds.add(id);
+
+        return articleMap.get(id) || member;
+      });
+
+      if (!members.some((article) =>
+        visibleIds.has(String(article.article_id))
+      )) {
+        continue;
+      }
+
+      const representative =
+        members.find(
+          (article) =>
+            String(article.article_id) ===
+            String(cluster.representative_article_id)
+        ) || members[0];
+
+      if (!representative) continue;
+
+      items.push({
+        type: "cluster",
+        cluster,
+        representative,
+        members,
+        latestTime:
+          new Date(cluster.last_detected).getTime() ||
+          Math.max(0, ...members.map(getSortTime))
+      });
+    }
+
+    for (const article of dateArticles) {
+      if (assignedIds.has(String(article.article_id))) {
+        continue;
+      }
+
+      items.push({
+        type: "article",
+        article,
+        latestTime: getSortTime(article)
+      });
+    }
+
+    const getRisk = (item) =>
+      Number(
+        item.type === "cluster"
+          ? item.cluster.max_risk_score
+          : item.article.risk_score
+      ) || 0;
+
+    items.sort((a, b) => {
+      if (sortOrder === "oldest") {
+        return a.latestTime - b.latestTime;
+      }
+
+      if (sortOrder === "riskDesc") {
+        return getRisk(b) - getRisk(a);
+      }
+
+      if (sortOrder === "riskAsc") {
+        return getRisk(a) - getRisk(b);
+      }
+
+      return b.latestTime - a.latestTime;
+    });
+
+    return items;
+  }, [articles, clusters, dateArticles, sortOrder]);
+
+
   const hasAlert = useMemo(() => {
     if (!selectedArticle) return false;
     return alerts.some((alert) => alert.article_id === selectedArticle.article_id);
@@ -243,6 +390,34 @@ export default function DashboardPage() {
       }
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const handleMoveToSpam = async () => {
+    if (!selectedArticle?.article_id || spamLoading || sampleMode) return;
+
+    setSpamLoading(true);
+    setSpamError("");
+
+    try {
+      const response = await moveArticleToSpam(selectedArticle.article_id);
+
+      if (!response.data.success) {
+        throw new Error(response.data.message || "스팸 이동에 실패했습니다.");
+      }
+
+      setArticles((current) =>
+        current.filter(
+          (article) => article.article_id !== selectedArticle.article_id
+        )
+      );
+
+      setSelectedArticle(null);
+      setScreenMode("list");
+    } catch (requestError) {
+      setSpamError(getErrorMessage(requestError));
+    } finally {
+      setSpamLoading(false);
     }
   };
 
@@ -327,7 +502,21 @@ export default function DashboardPage() {
         {detailLoading ? (
           <LoadingState label="상세 정보를 불러오는 중입니다." />
         ) : (
-          <ArticleDetailPanel article={selectedArticle} hasAlert={hasAlert} />
+          <>
+            <ArticleDetailPanel
+              article={selectedArticle}
+              hasAlert={hasAlert}
+              isSpam={false}
+              onSpamToggle={sampleMode ? undefined : handleMoveToSpam}
+              spamLoading={spamLoading}
+            />
+
+            {spamError && (
+              <p className="errorText" role="alert">
+                스팸 이동 실패: {spamError}
+              </p>
+            )}
+          </>
         )}
 
         <section className="urlSourceList">
@@ -426,44 +615,165 @@ export default function DashboardPage() {
         </form>
       </section>
 
+
       <section className="timelineLayout">
         <div className="timeAxis">
           <span>시간순</span>
         </div>
+
         <div className="timelineArticles">
-          {!dateArticles.length ? (
-            <EmptyState title="조건에 맞는 기사가 없습니다." description="검색어 또는 필터를 조정해 보세요." />
+          {!displayItems.length ? (
+            <EmptyState
+              title="조건에 맞는 기사가 없습니다."
+              description="검색어 또는 필터를 조정해 보세요."
+            />
           ) : (
-            dateArticles.map((article) => (
-              <button
-                className="timelineArticle"
-                key={`${article.article_id}-${article.analysis_id || "raw"}`}
-                type="button"
-                onClick={() => handleSelectArticle(article)}
-              >
-                <div>
-                  <strong>{article.title || "제목 없음"}</strong>
-                  <p>{article.summary || article.content || "본문 또는 요약이 없습니다."}</p>
+            displayItems.map((item) => {
+              if (item.type === "article") {
+                const article = item.article;
+
+                return (
+                  <button
+                    className="timelineArticle"
+                    key={`article-${article.article_id}`}
+                    type="button"
+                    onClick={() => handleSelectArticle(article)}
+                  >
+                    <div>
+                      <strong>{article.title || "제목 없음"}</strong>
+                      <p>
+                        {article.summary ||
+                          article.content ||
+                          "본문 또는 요약이 없습니다."}
+                      </p>
+                    </div>
+
+                    <dl>
+                      <div>
+                        <dt>출처</dt>
+                        <dd>{article.source || "-"}</dd>
+                      </div>
+                      <div>
+                        <dt>상태</dt>
+                        <dd>클러스터 미배정</dd>
+                      </div>
+                    </dl>
+                  </button>
+                );
+              }
+
+              const { cluster, representative, members } = item;
+              const expanded =
+                Boolean(expandedClusters[cluster.cluster_id]);
+
+              const otherArticles = members.filter(
+                (article) =>
+                  String(article.article_id) !==
+                  String(representative.article_id)
+              );
+
+              return (
+                <div
+                  className="clusterGroup"
+                  key={`cluster-${cluster.cluster_id}`}
+                >
+                  <div className="clusterGroupHeader">
+                    <span>클러스터 #{cluster.cluster_id}</span>
+
+                    <button
+                      className="secondaryButton"
+                      type="button"
+                      aria-expanded={expanded}
+                      onClick={() =>
+                        toggleCluster(cluster.cluster_id)
+                      }
+                    >
+                      기사 {cluster.article_count}건
+                      {expanded ? " ▲" : " ▼"}
+                    </button>
+                  </div>
+
+                  <button
+                    className="timelineArticle"
+                    type="button"
+                    onClick={() =>
+                      handleSelectArticle(representative)
+                    }
+                  >
+                    <div>
+                      <strong>
+                        {representative.title ||
+                          cluster.representative_title ||
+                          "제목 없음"}
+                      </strong>
+                      <p>
+                        {representative.summary ||
+                          representative.content ||
+                          "본문 또는 요약이 없습니다."}
+                      </p>
+                    </div>
+
+                    <dl>
+                      <div>
+                        <dt>출처</dt>
+                        <dd>{representative.source || "-"}</dd>
+                      </div>
+                      <div>
+                        <dt>감성</dt>
+                        <dd>
+                          {representative.sentiment_label || "분석 전"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>risk_score</dt>
+                        <dd>{scoreLabel(representative.risk_score)}</dd>
+                      </div>
+                    </dl>
+                  </button>
+
+                  {expanded && otherArticles.length > 0 && (
+                    <div className="clusterMembers">
+                      {otherArticles.map((article) => (
+                        <button
+                          className="timelineArticle"
+                          key={`member-${article.article_id}`}
+                          type="button"
+                          onClick={() =>
+                            handleSelectArticle(article)
+                          }
+                        >
+                          <div>
+                            <strong>
+                              {article.title || "제목 없음"}
+                            </strong>
+                            <p>
+                              {article.summary ||
+                                article.content ||
+                                "본문 또는 요약이 없습니다."}
+                            </p>
+                          </div>
+
+                          <dl>
+                            <div>
+                              <dt>출처</dt>
+                              <dd>{article.source || "-"}</dd>
+                            </div>
+                            <div>
+                              <dt>risk_score</dt>
+                              <dd>{scoreLabel(article.risk_score)}</dd>
+                            </div>
+                          </dl>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <dl>
-                  <div>
-                    <dt>출처</dt>
-                    <dd>{article.source || "-"}</dd>
-                  </div>
-                  <div>
-                    <dt>감성</dt>
-                    <dd>{article.sentiment_label || "분석 전"}</dd>
-                  </div>
-                  <div>
-                    <dt>risk_score</dt>
-                    <dd>{scoreLabel(article.risk_score)}</dd>
-                  </div>
-                </dl>
-              </button>
-            ))
+              );
+            })
           )}
         </div>
       </section>
+
 
       <button className="topicButton" type="button" onClick={() => setScreenMode("detail")}>
         &lt; 목록 &gt;
