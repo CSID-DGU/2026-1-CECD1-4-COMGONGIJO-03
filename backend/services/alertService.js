@@ -30,6 +30,7 @@ async function createClusterAlertIfNeeded({ articleId, clusterId, analysis, risk
         message: analysis.alert_message || analysis.summary || "위험 기사 감지",
         riskScore
     });
+    await require('./pushService').notifyAlert(alertId);
 
     return {
         alertCreated: true,
@@ -59,6 +60,7 @@ async function createLegacyAlertIfNeeded({ articleId, analysis }) {
         message: analysis.alert_message || analysis.summary || "위험 기사 감지",
         riskScore: analysis.risk_score
     });
+    await require('./pushService').notifyAlert(alertId);
 
     return {
         alertCreated: true,

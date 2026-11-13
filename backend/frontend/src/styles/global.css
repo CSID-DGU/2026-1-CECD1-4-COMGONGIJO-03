@@ -183,6 +183,13 @@ p {
   justify-self: end;
 }
 
+.listHeaderActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .sketchTabs button {
   min-width: 112px;
   font-size: 18px;
@@ -824,3 +831,6 @@ dd {
 .clusterMembers .timelineArticle {
   margin-bottom: 8px;
 }
+.pushControls { margin: 12px 0; padding: 12px; border: 1px solid #b6c6d5; border-radius: 8px; }
+.pushControls form, .pushControls>div { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.pushControls input { max-width: 100%; }

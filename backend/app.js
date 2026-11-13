@@ -16,5 +16,7 @@ app.get("/", (req, res) => {
 app.use("/api/articles", articleRoutes);
 app.use("/api/alerts", alertRoutes);
 app.use("/api/clusters", clusterRoutes);
+app.use("/api/push", require("./routes/pushRoutes"));
+require("./services/pushService").startPushWorker();
 
 module.exports = app;

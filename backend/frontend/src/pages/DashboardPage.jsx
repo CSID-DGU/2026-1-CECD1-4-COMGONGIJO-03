@@ -5,6 +5,8 @@ import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import SampleModeBanner from "../components/SampleModeBanner";
 import Toolbar from "../components/Toolbar";
+import { downloadArticleExcel } from "../utils/articleExport";
+import {kstDateKey,buildDisplayItems,flattenDisplayItems} from "../utils/articleView";
 import {
   createArticle,
   getAlerts,
@@ -69,7 +71,7 @@ function getDateKey(article) {
   if (!value) return "날짜 없음";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
-  return date.toISOString().slice(0, 10);
+  return kstDateKey(value);
 }
 
 function formatDateLabel(dateKey) {
@@ -139,6 +141,8 @@ export default function DashboardPage({ refreshTick }) {
   const [formError, setFormError] = useState("");
   const [clusters, setClusters] = useState([]);
   const [expandedClusters, setExpandedClusters] = useState({});
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
 
   const toggleCluster = (clusterId) => {
     setExpandedClusters((current) => ({
@@ -271,93 +275,7 @@ export default function DashboardPage({ refreshTick }) {
   }, [filteredArticles, selectedDate]);
 
 
-  const displayItems = useMemo(() => {
-    const articleMap = new Map(
-      articles.map((article) => [
-        String(article.article_id),
-        article
-      ])
-    );
-
-    const visibleIds = new Set(
-      dateArticles.map((article) => String(article.article_id))
-    );
-
-    const assignedIds = new Set();
-    const items = [];
-
-    for (const cluster of clusters) {
-      const members = (cluster.articles || []).map((member) => {
-        const id = String(member.article_id);
-        assignedIds.add(id);
-
-        return articleMap.get(id) || member;
-      });
-
-      if (!members.some((article) =>
-        visibleIds.has(String(article.article_id))
-      )) {
-        continue;
-      }
-
-      const representative =
-        members.find(
-          (article) =>
-            String(article.article_id) ===
-            String(cluster.representative_article_id)
-        ) || members[0];
-
-      if (!representative) continue;
-
-      items.push({
-        type: "cluster",
-        cluster,
-        representative,
-        members,
-        latestTime:
-          new Date(cluster.last_detected).getTime() ||
-          Math.max(0, ...members.map(getSortTime))
-      });
-    }
-
-    for (const article of dateArticles) {
-      if (assignedIds.has(String(article.article_id))) {
-        continue;
-      }
-
-      items.push({
-        type: "article",
-        article,
-        latestTime: getSortTime(article)
-      });
-    }
-
-    const getRisk = (item) =>
-      Number(
-        item.type === "cluster"
-          ? item.cluster.max_risk_score
-          : item.article.risk_score
-      ) || 0;
-
-    items.sort((a, b) => {
-      if (sortOrder === "oldest") {
-        return a.latestTime - b.latestTime;
-      }
-
-      if (sortOrder === "riskDesc") {
-        return getRisk(b) - getRisk(a);
-      }
-
-      if (sortOrder === "riskAsc") {
-        return getRisk(a) - getRisk(b);
-      }
-
-      return b.latestTime - a.latestTime;
-    });
-
-    return items;
-  }, [articles, clusters, dateArticles, sortOrder]);
-
+  const displayItems = useMemo(() => buildDisplayItems(dateArticles, clusters, sortOrder), [dateArticles, clusters, sortOrder]);
 
   const hasAlert = useMemo(() => {
     if (!selectedArticle) return false;
@@ -365,6 +283,19 @@ export default function DashboardPage({ refreshTick }) {
   }, [alerts, selectedArticle]);
 
   const selectedDateIndex = dateKeys.indexOf(selectedDate);
+
+  const handleExcelDownload = async () => {
+    if (exporting || !dateArticles.length) return;
+    setExporting(true);
+    setExportError("");
+    try {
+      await downloadArticleExcel(flattenDisplayItems(displayItems), { selectedDate, activeTab });
+    } catch (requestError) {
+      setExportError(`엑셀 다운로드 실패: ${getErrorMessage(requestError)}`);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const moveDate = (direction) => {
     if (!dateKeys.length) return;
@@ -585,10 +516,23 @@ export default function DashboardPage({ refreshTick }) {
           </button>
         </div>
 
-        <button className="secondaryButton" type="button" onClick={() => loadData(query.trim())}>
-          업데이트
-        </button>
+        <div className="listHeaderActions">
+          <button className="secondaryButton" type="button" onClick={() => loadData(query.trim())}>
+            업데이트
+          </button>
+          <button
+            className="secondaryButton"
+            type="button"
+            disabled={exporting || !dateArticles.length}
+            onClick={handleExcelDownload}
+            aria-busy={exporting}
+          >
+            {exporting ? "엑셀 생성 중…" : "엑셀 다운로드"}
+          </button>
+        </div>
       </section>
+      <p>엑셀에는 현재 날짜·검색·감성 조건에 맞는 기사와 접힌 묶음의 해당 기사를 표시 순서대로 포함합니다.</p>
+      {exportError && <p className="errorText" role="alert">{exportError}</p>}
 
       <section className="controlBand sketchControlBand">
         <Toolbar
@@ -688,7 +632,7 @@ export default function DashboardPage({ refreshTick }) {
                         toggleCluster(cluster.cluster_id)
                       }
                     >
-                      기사 {cluster.article_count}건
+                      조건 일치 {members.length}건 / 전체 {cluster.article_count}건
                       {expanded ? " ▲" : " ▼"}
                     </button>
                   </div>

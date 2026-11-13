@@ -4,6 +4,7 @@ import RiskyArticlesPage from "./pages/RiskyArticlesPage";
 import AlertsPage from "./pages/AlertsPage";
 import SpamArticlesPage from "./pages/SpamArticlesPage";
 import { getAlerts } from "./services/articles";
+import PushControls from './components/PushControls';
 
 const navItems = [
   { id: "dashboard", label: "기사 목록" },
@@ -41,7 +42,7 @@ function isUserTyping() {
 }
 
 export default function App() {
-  const [activePage, setActivePage] = useState("dashboard");
+  const [activePage, setActivePage] = useState(() => new URLSearchParams(window.location.search).get('page') === 'alerts' ? 'alerts' : 'dashboard');
   const [toastAlerts, setToastAlerts] = useState([]);
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -170,6 +171,7 @@ export default function App() {
       </header>
 
       <main>
+        <PushControls />
         {activePage === "dashboard" && <DashboardPage refreshTick={refreshTick} />}
         {activePage === "risky" && <RiskyArticlesPage refreshTick={refreshTick} />}
         {activePage === "alerts" && <AlertsPage refreshTick={refreshTick} />}

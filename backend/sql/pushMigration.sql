@@ -1,0 +1,26 @@
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+ id INT AUTO_INCREMENT PRIMARY KEY,
+ endpoint_hash CHAR(64) NOT NULL UNIQUE,
+ subscription_json TEXT NOT NULL,
+ active BOOLEAN NOT NULL DEFAULT TRUE,
+ created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS push_deliveries (
+ id BIGINT AUTO_INCREMENT PRIMARY KEY,
+ subscription_id INT NOT NULL,
+ event_key VARCHAR(150) NOT NULL,
+ payload_json TEXT NOT NULL,
+ status VARCHAR(20) NOT NULL DEFAULT 'queued',
+ attempts INT NOT NULL DEFAULT 0,
+ next_attempt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ last_http_status INT NULL,
+ updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ UNIQUE KEY uq_push_event (subscription_id,event_key),
+ FOREIGN KEY (subscription_id) REFERENCES push_subscriptions(id)
+);
+CREATE TABLE IF NOT EXISTS push_state (
+ id INT PRIMARY KEY,
+ last_alert_id INT NOT NULL
+);
+INSERT IGNORE INTO push_state(id,last_alert_id) SELECT 1,COALESCE(MAX(alert_id),0) FROM alerts;
