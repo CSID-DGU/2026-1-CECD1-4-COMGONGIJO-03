@@ -2,7 +2,16 @@ const clusterRepository = require("../repositories/clusterRepository");
 const { getEmbedding, cosineSimilarity } = require("../ai/embedding");
 
 const embeddingCache = new Map();
-const CLUSTER_MATCH_THRESHOLD = 70;
+// 테스트 실행기가 클러스터 판정 결과를 수집하기 위한 리스너
+const clusterDecisionListeners = new Set();
+
+function subscribeClusterDecisions(listener) {
+    clusterDecisionListeners.add(listener);
+
+    return () => clusterDecisionListeners.delete(listener);
+}
+
+const CLUSTER_MATCH_THRESHOLD = 55; // 기존 70/100에서 임시 변경
 
 async function getCachedEmbedding(text) {
     if (!text) return null;
@@ -269,7 +278,7 @@ async function findBestCluster(
         let weightedScore =
             embeddingSimilarity * 60;
 
-        let totalWeight = 60;
+        // let totalWeight = 60;
 
         // 사건명 비교
         if (
@@ -285,27 +294,36 @@ async function findBestCluster(
             weightedScore +=
                 eventNameSimilarity * 10;
 
-            totalWeight += 10;
+        //    totalWeight += 10;
         }
 
-        // 장소 비교
+        // 장소 비교: 최대 10점
+        // 장소 정보가 없으면 중립 점수 5점을 부여합니다.
         let locationSimilarity = null;
 
-        if (
-            analysis.event_location &&
-            cluster.event_location
-        ) {
-            locationSimilarity =
-                getTextSimilarity(
-                    analysis.event_location,
-                    cluster.event_location
-                );
+        const newLocation = String(
+            analysis.event_location || ""
+        ).trim();
 
-            weightedScore +=
-                locationSimilarity * 10;
+        const clusterLocation = String(
+            cluster.event_location || ""
+        ).trim();
 
-            totalWeight += 10;
+        if (newLocation && clusterLocation) {
+            locationSimilarity = getTextSimilarity(
+                newLocation,
+                clusterLocation
+            );
+
+            weightedScore += locationSimilarity * 10;
+        } else {
+            weightedScore += 5;
         }
+
+
+
+
+        /* 평가 기준 변화를 위한 임시 주석 처리 
 
         // 핵심 엔티티 비교
         const newEntities =
@@ -376,14 +394,22 @@ async function findBestCluster(
 
             totalWeight += 5;
         }
+        */
+        // 80점 만점 : 임베딩 60 사건명 10 장소 10 
+        let score = weightedScore; 
 
+
+
+        /* 80점 만점 테스트를 위해 임시 주석처리
         let score =
             (weightedScore / totalWeight) * 100;
+        */
 
-        /*
+        /* 
          * 의미는 비슷해도 핵심 장소나 발생 날짜가 명확하게 다르면
          * 서로 다른 사건일 가능성이 높으므로 편입을 제한합니다.
          */
+        /* 임시 주석처리 - 이 경우 클러스터링 과분할 문제 해소, 오병합문제는 증가시킴
         if (
             locationSimilarity !== null &&
             locationSimilarity < 0.25
@@ -397,6 +423,7 @@ async function findBestCluster(
         ) {
             score = Math.min(score, 60);
         }
+        */
 
         console.log(
             "후보:",
@@ -590,10 +617,43 @@ async function assignCluster({
         );
     }
 
+    const clusterDecision = {
+        article_id: articleId,
+        candidate_cluster_id:
+            bestCluster?.cluster_id ?? null,
+        candidate_cluster_title:
+            bestCluster?.representative_title ?? null,
+        similarity_score:
+            bestCluster
+                ? Number(bestScore.toFixed(4))
+                : null,
+        max_score: 80,
+        threshold: CLUSTER_MATCH_THRESHOLD,
+        decision:
+            !bestCluster
+                ? "NO_CANDIDATE"
+                : bestScore >= CLUSTER_MATCH_THRESHOLD
+                    ? "PASS"
+                    : "FAIL",
+        assigned_cluster_id: clusterId
+    };
+
+    for (const listener of clusterDecisionListeners) {
+        try {
+            listener(clusterDecision);
+        } catch (error) {
+            console.error(
+                "[EVAL DECISION LISTENER ERROR]",
+                error
+            );
+        }
+    }
+
     return {
         clusterId,
         clusterKey,
-        articleEmbedding: newEmbedding
+        articleEmbedding: newEmbedding,
+        clusterDecision
     };
 }
 
@@ -765,6 +825,7 @@ async function recalculateClusterAfterSpamChange(connection, clusterId) {
 }
 
 module.exports = {
+    subscribeClusterDecisions,
     assignCluster,
     getClusters,
     getClusterWithArticles,

@@ -4,6 +4,7 @@ async function findHistoricalCrises(targetName) {
     const [rows] = await db.query(
         `
         SELECT
+            aa.article_id,
             aa.cluster_id,
             aa.target_name,
             aa.issue_type,
@@ -22,12 +23,15 @@ async function findHistoricalCrises(targetName) {
             aa.analysis_status = 'completed'
             AND aa.target_related = TRUE
             AND aa.target_name = ?
+            AND (
+                aa.event_date IS NOT NULL
+                OR a.published_at IS NOT NULL
+            )
 
         ORDER BY
             COALESCE(
                 aa.event_date,
-                DATE(a.published_at),
-                DATE(aa.analyzed_at)
+                DATE(a.published_at)
             ) DESC
         `,
         [targetName]

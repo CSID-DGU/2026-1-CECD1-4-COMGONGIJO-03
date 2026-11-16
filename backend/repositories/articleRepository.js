@@ -180,7 +180,21 @@ async function findByIdWithAnalysis(articleId) {
 }
 
 
-async function findUnanalyzedArticles(limit = 10) {
+async function findUnanalyzedArticles(
+    limit = 10,
+    excludedArticleIds = []
+) {
+    const ids = [...new Set(
+        excludedArticleIds
+            .map(Number)
+            .filter(Number.isSafeInteger)
+            .filter(id => id > 0)
+    )];
+
+    const exclusionSql = ids.length > 0
+        ? `AND a.article_id NOT IN (${ids.map(() => "?").join(",")})`
+        : "";
+
     const [rows] = await db.query(
         `
         SELECT a.*
@@ -190,10 +204,11 @@ async function findUnanalyzedArticles(limit = 10) {
             FROM article_analysis aa
             WHERE aa.article_id = a.article_id
         )
+        ${exclusionSql}
         ORDER BY a.collected_at ASC, a.article_id ASC
         LIMIT ?
         `,
-        [limit]
+        [...ids, limit]
     );
 
     return rows;

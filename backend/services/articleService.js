@@ -53,6 +53,7 @@ async function processArticleAnalysis(article) {
     }
 
     const analysis = await analyzeArticle({
+        article_id: articleId,
         title: article.title,
         content: article.content,
         source: article.source,

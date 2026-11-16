@@ -1,0 +1,27 @@
+services:
+  eval:
+    profiles: ["eval"]
+    build: ./backend
+    working_dir: /app
+    env_file: .env.docker
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: news_test_db
+      DB_USER: ${DOCKER_DB_USER:?DB user required}
+      DB_PASSWORD: ${DOCKER_DB_PASSWORD:?DB password required}
+      OLLAMA_BASE_URL: http://ollama:11434
+      EVAL_OUTPUT: /results/evaluation.json
+      NODE_PATH: /app/node_modules
+    volumes:
+      - ./cluster_eval_rebuilt:/eval:ro
+      - ./cluster_eval_results:/results
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    entrypoint: ["node"]
+    restart: "no"
