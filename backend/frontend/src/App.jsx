@@ -4,7 +4,6 @@ import RiskyArticlesPage from "./pages/RiskyArticlesPage";
 import AlertsPage from "./pages/AlertsPage";
 import SpamArticlesPage from "./pages/SpamArticlesPage";
 import { getAlerts } from "./services/articles";
-import PushControls from './components/PushControls';
 
 const navItems = [
   { id: "dashboard", label: "기사 목록" },
@@ -171,7 +170,6 @@ export default function App() {
       </header>
 
       <main>
-        <PushControls />
         {activePage === "dashboard" && <DashboardPage refreshTick={refreshTick} />}
         {activePage === "risky" && <RiskyArticlesPage refreshTick={refreshTick} />}
         {activePage === "alerts" && <AlertsPage refreshTick={refreshTick} />}
