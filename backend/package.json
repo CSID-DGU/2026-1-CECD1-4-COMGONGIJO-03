@@ -1,10 +1,15 @@
+
 {
   "name": "backend",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "node scripts/dev.js",
+    "crawl": "node crawler/index.js",
+    "notify:test": "node scripts/sendTestNotification.js",
+    "test": "node tests/crawler.offline.test.js && node tests/crawler.pipeline.test.js && node tests/notify.test.js"
   },
   "keywords": [],
   "author": "",

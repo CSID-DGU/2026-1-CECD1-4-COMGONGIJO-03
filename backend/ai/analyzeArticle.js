@@ -51,7 +51,6 @@ async function analyzeArticle(article) {
         );
     }
 
-
     if (!response.ok) {
         throw new Error(
             `Ollama API 오류 (${response.status}): ${JSON.stringify(data)}`

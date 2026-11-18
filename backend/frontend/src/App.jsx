@@ -3,14 +3,23 @@ import DashboardPage from "./pages/DashboardPage";
 import RiskyArticlesPage from "./pages/RiskyArticlesPage";
 import AlertsPage from "./pages/AlertsPage";
 import SpamArticlesPage from "./pages/SpamArticlesPage";
+import CrawlerPage from "./pages/CrawlerPage";
+import NotifySettingsPage from "./pages/NotifySettingsPage";
 import { getAlerts } from "./services/articles";
 
 const navItems = [
   { id: "dashboard", label: "기사 목록" },
   { id: "risky", label: "위험 기사" },
   { id: "alerts", label: "알림" },
-  { id: "spam", label: "스팸기사함" }
+  { id: "spam", label: "스팸기사함" },
+  { id: "crawler", label: "뉴스 수집" },
+  { id: "notify", label: "모바일 알림" }
 ];
+
+function getInitialPage() {
+  const page = new URLSearchParams(window.location.search).get("page");
+  return navItems.some((item) => item.id === page) ? page : "dashboard";
+}
 
 const ALERT_CHECK_INTERVAL_MS = 5000;
 const PAGE_REFRESH_INTERVAL_MS = 30000;
@@ -41,7 +50,7 @@ function isUserTyping() {
 }
 
 export default function App() {
-  const [activePage, setActivePage] = useState(() => new URLSearchParams(window.location.search).get('page') === 'alerts' ? 'alerts' : 'dashboard');
+  const [activePage, setActivePage] = useState(getInitialPage);
   const [toastAlerts, setToastAlerts] = useState([]);
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -174,6 +183,11 @@ export default function App() {
         {activePage === "risky" && <RiskyArticlesPage refreshTick={refreshTick} />}
         {activePage === "alerts" && <AlertsPage refreshTick={refreshTick} />}
         {activePage === "spam" && <SpamArticlesPage refreshTick={refreshTick} />}
+        {/* 다른 화면으로 이동하더라도 진행 중인 SSE 수집을 유지합니다. */}
+        <div hidden={activePage !== "crawler"}>
+          <CrawlerPage />
+        </div>
+        {activePage === "notify" && <NotifySettingsPage />}
       </main>
 
       <div className="toastContainer" aria-live="polite" aria-label="새 알림">
