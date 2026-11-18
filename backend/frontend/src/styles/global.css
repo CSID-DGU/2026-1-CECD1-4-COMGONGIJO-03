@@ -183,6 +183,13 @@ p {
   justify-self: end;
 }
 
+.listHeaderActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .sketchTabs button {
   min-width: 112px;
   font-size: 18px;

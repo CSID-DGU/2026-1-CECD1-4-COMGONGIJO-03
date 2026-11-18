@@ -41,7 +41,7 @@ function isUserTyping() {
 }
 
 export default function App() {
-  const [activePage, setActivePage] = useState("dashboard");
+  const [activePage, setActivePage] = useState(() => new URLSearchParams(window.location.search).get('page') === 'alerts' ? 'alerts' : 'dashboard');
   const [toastAlerts, setToastAlerts] = useState([]);
   const [refreshTick, setRefreshTick] = useState(0);
 
