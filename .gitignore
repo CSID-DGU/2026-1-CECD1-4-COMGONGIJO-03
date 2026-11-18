@@ -7,3 +7,6 @@ test/Crawling/node_modules/
 .env.docker
 .env.docker.*
 !.env.docker.example
+
+# Local verification reports, database exports, and generated builds
+audit-output/
