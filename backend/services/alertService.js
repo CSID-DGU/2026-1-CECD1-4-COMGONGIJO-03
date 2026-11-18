@@ -1,5 +1,7 @@
 const alertRepository = require("../repositories/alertRepository");
 
+const { notifyRiskAlert } = require("./notifyService");
+
 const RISK_THRESHOLD = 0.6;
 
 async function createClusterAlertIfNeeded({ articleId, clusterId, analysis, riskScore }) {
@@ -13,28 +15,28 @@ async function createClusterAlertIfNeeded({ articleId, clusterId, analysis, risk
             alertCreated: false,
             alertId: null
         };
-    } 
-    
-    const existingAlert = await alertRepository.findByClusterId(clusterId);
-    if (existingAlert) {
-        return {
-            alertCreated: false,
-            alertId: existingAlert.alert_id
-        };
     }
 
-    const alertId = await alertRepository.createClusterAlert({
+    const message = analysis.alert_message || analysis.summary || "위험 기사 감지";
+    const result = await alertRepository.createClusterAlertOnce({
         articleId,
         clusterId,
         topic: analysis.alert_topic,
-        message: analysis.alert_message || analysis.summary || "위험 기사 감지",
+        message,
         riskScore
     });
 
-    return {
-        alertCreated: true,
-        alertId
-    };
+    if (result.alertCreated) {
+        notifyRiskAlert({
+            alert_id: result.alertId,
+            article_id: articleId,
+            alert_topic: analysis.alert_topic,
+            alert_message: message,
+            risk_score: riskScore
+        }).catch((error) => console.error("[NOTIFY]", error.message));
+    }
+
+    return result;
 }
 
 async function createLegacyAlertIfNeeded({ articleId, analysis }) {

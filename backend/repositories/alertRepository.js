@@ -1,7 +1,7 @@
 const db = require("../db");
 
-async function findByClusterId(clusterId) {
-    const [rows] = await db.query(
+async function findByClusterId(connection, clusterId) {
+    const [rows] = await connection.query(
         `
         SELECT alert_id
         FROM alerts
@@ -14,8 +14,8 @@ async function findByClusterId(clusterId) {
     return rows[0] || null;
 }
 
-async function createClusterAlert({ articleId, clusterId, topic, message, riskScore }) {
-    const [result] = await db.query(
+async function createClusterAlert(connection, { articleId, clusterId, topic, message, riskScore }) {
+    const [result] = await connection.query(
         `
         INSERT INTO alerts
         (article_id, cluster_id, alert_topic, alert_message, risk_score, alert_status, created_at)
@@ -25,6 +25,27 @@ async function createClusterAlert({ articleId, clusterId, topic, message, riskSc
     );
 
     return result.insertId;
+}
+
+async function createClusterAlertOnce(alert) {
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+        // Serialize alerts for this cluster across worker processes.
+        await connection.query(
+            "SELECT cluster_id FROM clusters WHERE cluster_id = ? FOR UPDATE",
+            [alert.clusterId]
+        );
+        const existing = await findByClusterId(connection, alert.clusterId);
+        const alertId = existing ? existing.alert_id : await createClusterAlert(connection, alert);
+        await connection.commit();
+        return { alertCreated: !existing, alertId };
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
 }
 
 async function findRecentByTopic(topic) {
@@ -81,8 +102,7 @@ async function findAll() {
 }
 
 module.exports = {
-    findByClusterId,
-    createClusterAlert,
+    createClusterAlertOnce,
     findRecentByTopic,
     createLegacyAlert,
     findAll

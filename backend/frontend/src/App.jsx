@@ -3,12 +3,16 @@ import DashboardPage from "./pages/DashboardPage";
 import RiskyArticlesPage from "./pages/RiskyArticlesPage";
 import AlertsPage from "./pages/AlertsPage";
 import SpamArticlesPage from "./pages/SpamArticlesPage";
+import CrawlerPage from "./pages/CrawlerPage";
+import NotifySettingsPage from "./pages/NotifySettingsPage";
 import { getAlerts } from "./services/articles";
 
 const navItems = [
   { id: "dashboard", label: "기사 목록" },
   { id: "risky", label: "위험 기사" },
   { id: "alerts", label: "알림" },
+  { id: "crawler", label: "뉴스 수집" },
+  { id: "notify", label: "모바일 알림" },
   { id: "spam", label: "스팸기사함" }
 ];
 
@@ -42,6 +46,7 @@ function isUserTyping() {
 
 export default function App() {
   const [activePage, setActivePage] = useState(() => new URLSearchParams(window.location.search).get('page') === 'alerts' ? 'alerts' : 'dashboard');
+  const [crawlerVisited, setCrawlerVisited] = useState(false);
   const [toastAlerts, setToastAlerts] = useState([]);
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -161,7 +166,10 @@ export default function App() {
               className={activePage === item.id ? "active" : ""}
               key={item.id}
               type="button"
-              onClick={() => setActivePage(item.id)}
+              onClick={() => {
+                if (item.id === "crawler") setCrawlerVisited(true);
+                setActivePage(item.id);
+              }}
             >
               {item.label}
             </button>
@@ -174,6 +182,10 @@ export default function App() {
         {activePage === "risky" && <RiskyArticlesPage refreshTick={refreshTick} />}
         {activePage === "alerts" && <AlertsPage refreshTick={refreshTick} />}
         {activePage === "spam" && <SpamArticlesPage refreshTick={refreshTick} />}
+        {crawlerVisited && (
+          <div hidden={activePage !== "crawler"}><CrawlerPage /></div>
+        )}
+        {activePage === "notify" && <NotifySettingsPage />}
       </main>
 
       <div className="toastContainer" aria-live="polite" aria-label="새 알림">
@@ -204,6 +216,13 @@ export default function App() {
                 <dd>{formatToastTime(alert.created_at)}</dd>
               </div>
             </dl>
+
+            <button type="button" onClick={() => {
+              setActivePage("alerts");
+              removeToast(alert.toastId);
+            }}>
+              알림 보기
+            </button>
 
             {alert.url && (
               <a href={alert.url} target="_blank" rel="noreferrer">

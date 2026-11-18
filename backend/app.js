@@ -17,4 +17,7 @@ app.use("/api/articles", articleRoutes);
 app.use("/api/alerts", alertRoutes);
 app.use("/api/clusters", clusterRoutes);
 
+app.use("/api/crawler", require("./routes/crawlerRoutes"));
+app.use("/api/notify", require("./routes/notifyRoutes"));
+
 module.exports = app;

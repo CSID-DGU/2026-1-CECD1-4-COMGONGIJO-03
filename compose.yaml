@@ -14,6 +14,8 @@ services:
     environment:
       PROXY_BASE: http://crawler-proxy:3001/naver-news
       BACKEND_BASE: http://backend:3000
+      CRAWLER_PROVIDER: ${CRAWLER_PROVIDER:-naver}
+    command: ['sh', '-c', 'if [ "$$CRAWLER_PROVIDER" = naver ]; then exec node worker.js; fi; exec sleep infinity']
     depends_on:
       - crawler-proxy
       - backend
@@ -44,6 +46,7 @@ services:
       DB_NAME: news_db
       DB_USER: ${DOCKER_DB_USER:?DB user required}
       DB_PASSWORD: ${DOCKER_DB_PASSWORD:?DB password required}
+      CRAWLER_PROVIDER: ${CRAWLER_PROVIDER:-naver}
       OLLAMA_BASE_URL: http://ollama:11434
     depends_on:
       db:
