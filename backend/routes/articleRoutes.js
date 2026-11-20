@@ -1,5 +1,7 @@
 const express = require("express");
 const articleController = require("../controllers/articleController");
+const riskFeedbackController =
+    require("../controllers/riskFeedbackController");
 
 const router = express.Router();
 
@@ -11,6 +13,14 @@ router.get("/analyzed/list", articleController.getAnalyzedArticles);
 router.get("/risky/list", articleController.getRiskyArticles);
 router.get("/spam", articleController.getSpamArticles);
 router.get("/", articleController.getArticles);
+router.get(
+    "/:article_id/risk-feedback",
+    riskFeedbackController.get
+);
+router.put(
+    "/:article_id/risk-feedback",
+    riskFeedbackController.put
+);
 router.get("/:article_id", articleController.getArticleById);
 
 // 스팸기사 전환 및 복구

@@ -1,42 +1,86 @@
-const RISK_WEIGHTS = Object.freeze({
-    media_influence: 0.0462,
-    issue_severity: 0.2264,
-    target_responsibility: 0.2738,
-    norm_violation: 0.3485,
-    similar_crisis_history: 0.1050
-});
+const model = require("../config/riskModel.json");
 
-const WEIGHT_SUM =
-    Object.values(RISK_WEIGHTS)
-        .reduce((sum, value) => sum + value, 0);
+const RISK_FACTORS = Object.freeze([
+    "issue_severity",
+    "target_responsibility",
+    "norm_violation",
+    "similar_crisis_history"
+]);
 
 function clamp01(value) {
     const number = Number(value);
-
-    if (!Number.isFinite(number)) {
-        return 0;
-    }
-
+    if (!Number.isFinite(number)) return 0;
     return Math.max(0, Math.min(1, number));
 }
 
-function calculateRiskScore(analysis) {
-    const weightedScore =
-        clamp01(analysis.media_influence) *
-            RISK_WEIGHTS.media_influence +
-        clamp01(analysis.issue_severity) *
-            RISK_WEIGHTS.issue_severity +
-        clamp01(analysis.target_responsibility) *
-            RISK_WEIGHTS.target_responsibility +
-        clamp01(analysis.norm_violation) *
-            RISK_WEIGHTS.norm_violation +
-        clamp01(analysis.similar_crisis_history) *
-            RISK_WEIGHTS.similar_crisis_history;
+function assertModel(config) {
+    const sum = RISK_FACTORS.reduce((total, key) => {
+        const weight = config.weights?.[key];
+        const params = config.factors?.[key];
 
-    return weightedScore / WEIGHT_SUM;
+        if (
+            !Number.isFinite(weight) || weight < 0 ||
+            !params ||
+            !Number.isFinite(params.a) || params.a <= 0 ||
+            !Number.isFinite(params.p) || params.p <= 0 ||
+            !Number.isFinite(params.b)
+        ) {
+            throw new Error(
+                `Invalid risk model parameters: ${key}`
+            );
+        }
+
+        return total + weight;
+    }, 0);
+
+    if (Math.abs(sum - 1) > 0.000001) {
+        throw new Error(
+            `Risk weights must sum to 1: ${sum}`
+        );
+    }
+}
+
+assertModel(model);
+
+const RISK_WEIGHTS = Object.freeze({
+    ...model.weights
+});
+
+function calibrateFactors(analysis, config = model) {
+    return Object.fromEntries(
+        RISK_FACTORS.map(key => {
+            const x = clamp01(analysis[key]);
+            const { a, b, p } = config.factors[key];
+
+            return [
+                key,
+                clamp01(a * Math.pow(x, p) + b)
+            ];
+        })
+    );
+}
+
+function scoreCalibratedFactors(factors, config = model) {
+    return RISK_FACTORS.reduce(
+        (score, key) =>
+            score +
+            config.weights[key] * clamp01(factors[key]),
+        0
+    );
+}
+
+function calculateRiskScore(analysis, config = model) {
+    const calibrated = calibrateFactors(analysis, config);
+
+    return scoreCalibratedFactors(calibrated, config);
 }
 
 module.exports = {
+    RISK_FACTORS,
     RISK_WEIGHTS,
-    calculateRiskScore
+    RISK_MODEL_VERSION: model.version,
+    calibrateFactors,
+    scoreCalibratedFactors,
+    calculateRiskScore,
+    assertModel
 };

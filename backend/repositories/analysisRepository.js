@@ -6,6 +6,8 @@ async function insertFullAnalysis({
     analysis,
     riskScore,
     clusterKey,
+    calibratedFactors,
+    riskModelVersion,
     articleEmbedding
 }) {
     const [result] = await db.query(
@@ -34,6 +36,8 @@ async function insertFullAnalysis({
             similar_crisis_history,
             risk_factor_reason,
             risk_score,
+            risk_calibrated_factors,
+            risk_model_version,
             cluster_key,
             analysis_status,
             analyzed_at
@@ -44,7 +48,7 @@ async function insertFullAnalysis({
             ?,
             ?, ?, ?,
             ?, ?, ?, ?, ?, ?,
-            ?, ?,
+            ?, ?, ?, ?,
             ?, NOW()
         )
         `,
@@ -87,6 +91,8 @@ async function insertFullAnalysis({
 
             analysis.risk_factor_reason,
             riskScore,
+            JSON.stringify(calibratedFactors),
+            riskModelVersion,
             clusterKey,
             "completed"
         ]

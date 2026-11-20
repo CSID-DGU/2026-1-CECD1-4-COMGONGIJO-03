@@ -93,13 +93,105 @@ async function findLinkCandidates({
 
     return rows;
 }
+async function findYesterdayCandidates(connection = db) {
+    const [rows] = await connection.query(`
+        SELECT
+            c.cluster_id,
+            c.cluster_key,
+            c.representative_title,
+            c.representative_article_id,
+            c.centroid_embedding,
+            c.issue_type,
+            c.article_count,
+            c.first_detected,
+            aa.event_name,
+            aa.event_location,
+            aa.article_embedding
+        FROM clusters c
+        LEFT JOIN article_analysis aa
+            ON aa.analysis_id = (
+                SELECT aa2.analysis_id
+                FROM article_analysis aa2
+                WHERE aa2.article_id = c.representative_article_id
+                  AND aa2.cluster_id = c.cluster_id
+                  AND COALESCE(
+                      aa2.spam_override,
+                      aa2.target_related
+                  ) = 1
+                ORDER BY
+                    aa2.analyzed_at DESC,
+                    aa2.analysis_id DESC
+                LIMIT 1
+            )
+        WHERE c.cluster_status = 'active'
+          AND c.article_count > 0
+          AND DATE(c.first_detected) =
+              DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+        ORDER BY c.cluster_id
+    `);
+
+    return rows;
+}
+
+async function findTodayLinkedCandidates(
+    previousIds,
+    connection = db
+) {
+    if (!previousIds.length) return [];
+
+    const placeholders = previousIds
+        .map(() => "?")
+        .join(", ");
+
+    const [rows] = await connection.query(`
+        SELECT DISTINCT
+            c.cluster_id,
+            c.cluster_key,
+            c.representative_title,
+            c.representative_article_id,
+            c.centroid_embedding,
+            c.issue_type,
+            c.article_count,
+            c.first_detected,
+            aa.event_name,
+            aa.event_location,
+            aa.article_embedding
+        FROM cluster_links cl
+        INNER JOIN clusters c
+            ON c.cluster_id = cl.to_cluster_id
+        LEFT JOIN article_analysis aa
+            ON aa.analysis_id = (
+                SELECT aa2.analysis_id
+                FROM article_analysis aa2
+                WHERE aa2.article_id = c.representative_article_id
+                  AND aa2.cluster_id = c.cluster_id
+                  AND COALESCE(
+                      aa2.spam_override,
+                      aa2.target_related
+                  ) = 1
+                ORDER BY
+                    aa2.analyzed_at DESC,
+                    aa2.analysis_id DESC
+                LIMIT 1
+            )
+        WHERE cl.link_type = 'same_event'
+          AND cl.from_cluster_id IN (${placeholders})
+          AND DATE(c.first_detected) = CURDATE()
+          AND c.cluster_status = 'active'
+          AND c.article_count > 0
+        ORDER BY c.cluster_id
+    `, previousIds);
+
+    return rows;
+}
 
 async function upsertClusterLink({
     fromClusterId,
     toClusterId,
-    similarityScore
+    similarityScore,
+    connection = db
 }) {
-    await db.query(
+    await connection.query(
         `
         INSERT INTO cluster_links (
             from_cluster_id,
@@ -177,6 +269,8 @@ async function findLinksByClusterId(
 
 module.exports = {
     findLinkCandidates,
+    findYesterdayCandidates,
+    findTodayLinkedCandidates,
     upsertClusterLink,
     findLinksByClusterId
 };

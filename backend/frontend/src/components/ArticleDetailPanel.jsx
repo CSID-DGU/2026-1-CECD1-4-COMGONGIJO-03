@@ -1,4 +1,5 @@
 import EmptyState from "./EmptyState";
+import RiskFeedbackPanel from "./RiskFeedbackPanel";
 
 function formatDateTime(value) {
   if (!value) return "-";
@@ -33,7 +34,8 @@ export default function ArticleDetailPanel({
   hasAlert,
   isSpam = false,
   onSpamToggle,
-  spamLoading = false
+  spamLoading = false,
+  feedbackEnabled = true
 }) {
   if (!article) {
     return (
@@ -124,7 +126,10 @@ export default function ArticleDetailPanel({
           {entities.length ? entities.map((entity) => <span key={entity}>{entity}</span>) : <span>-</span>}
         </div>
       </div>
-
+      <RiskFeedbackPanel
+        article={article}
+        disabled={!feedbackEnabled}
+      />
       {onSpamToggle && (
         <div className="detailTopControls">
           <button

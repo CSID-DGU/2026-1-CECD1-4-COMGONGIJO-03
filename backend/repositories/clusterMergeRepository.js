@@ -35,15 +35,16 @@ async function findMergeCandidates(date = null) {
         LEFT JOIN article_analysis aa
             ON aa.analysis_id = (
                 SELECT aa2.analysis_id
-
                 FROM article_analysis aa2
-
-                WHERE aa2.cluster_id =
-                    c.cluster_id
-
+                WHERE aa2.article_id = c.representative_article_id
+                AND aa2.cluster_id = c.cluster_id
+                AND COALESCE(
+                    aa2.spam_override,
+                    aa2.target_related
+                ) = 1
                 ORDER BY
-                    aa2.analyzed_at DESC
-
+                    aa2.analyzed_at DESC,
+                    aa2.analysis_id DESC
                 LIMIT 1
             )
 

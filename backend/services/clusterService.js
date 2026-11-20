@@ -1,6 +1,16 @@
 const clusterRepository = require("../repositories/clusterRepository");
 const { getEmbedding, cosineSimilarity } = require("../ai/embedding");
 
+const {
+    evaluateMatch,
+    getCandidateEmbedding
+} = require("./clusterSimilarityService");
+
+const {
+    findPrecreationMatch,
+    persistPreviousLinks
+} = require("./clusterLinkService");
+
 const embeddingCache = new Map();
 // 테스트 실행기가 클러스터 판정 결과를 수집하기 위한 리스너
 const clusterDecisionListeners = new Set();
@@ -222,8 +232,6 @@ function calculateUpdatedCentroid(
     );
 }
 
-// 새 기사와 각 클러스터 centroid를 비교하고
-// 장소/날짜/엔티티 등 핵심정보로 동일사건 여부를 보정합니다.
 async function findBestCluster(
     analysis,
     title,
@@ -239,204 +247,30 @@ async function findBestCluster(
     let bestScore = 0;
 
     for (const cluster of candidateClusters) {
-        let clusterEmbedding =
-            safeParseEmbedding(
-                cluster.centroid_embedding
-            );
+        const referenceEmbedding =
+            await getCandidateEmbedding(cluster);
 
-        // 기존 데이터 등 centroid가 없는 경우를 위한 임시 fallback입니다.
-        if (!clusterEmbedding) {
-            clusterEmbedding =
-                safeParseEmbedding(
-                    cluster.article_embedding
-                );
-        }
+        const evaluation = evaluateMatch(
+            analysis,
+            newEmbedding,
+            cluster,
+            referenceEmbedding
+        );
 
-        if (
-            !clusterEmbedding &&
-            cluster.representative_title
-        ) {
-            clusterEmbedding =
-                await getCachedEmbedding(
-                    cluster.representative_title
-                );
-        }
-
-        if (!newEmbedding || !clusterEmbedding) {
-            continue;
-        }
-
-        const embeddingSimilarity =
-            Math.max(
-                0,
-                cosineSimilarity(
-                    newEmbedding,
-                    clusterEmbedding
-                )
-            );
-
-        let weightedScore =
-            embeddingSimilarity * 60;
-
-        // let totalWeight = 60;
-
-        // 사건명 비교
-        if (
-            analysis.event_name &&
-            cluster.event_name
-        ) {
-            const eventNameSimilarity =
-                getTextSimilarity(
-                    analysis.event_name,
-                    cluster.event_name
-                );
-
-            weightedScore +=
-                eventNameSimilarity * 10;
-
-        //    totalWeight += 10;
-        }
-
-        // 장소 비교: 최대 10점
-        // 장소 정보가 없으면 중립 점수 5점을 부여합니다.
-        let locationSimilarity = null;
-
-        const newLocation = String(
-            analysis.event_location || ""
-        ).trim();
-
-        const clusterLocation = String(
-            cluster.event_location || ""
-        ).trim();
-
-        if (newLocation && clusterLocation) {
-            locationSimilarity = getTextSimilarity(
-                newLocation,
-                clusterLocation
-            );
-
-            weightedScore += locationSimilarity * 10;
-        } else {
-            weightedScore += 5;
-        }
-
-
-
-
-        /* 평가 기준 변화를 위한 임시 주석 처리 
-
-        // 핵심 엔티티 비교
-        const newEntities =
-            Array.isArray(analysis.event_entities)
-                ? analysis.event_entities
-                : [];
-
-        const oldEntities =
-            safeParseJsonArray(
-                cluster.event_entities
-            );
-
-        if (
-            newEntities.length > 0 &&
-            oldEntities.length > 0
-        ) {
-            const entitySimilarity =
-                getEntityOverlapScore(
-                    newEntities,
-                    oldEntities
-                );
-
-            weightedScore +=
-                entitySimilarity * 10;
-
-            totalWeight += 10;
-        }
-
-        // 사건 발생 날짜 비교
-        const dateDifference =
-            getDateDifferenceDays(
-                analysis.event_date,
-                cluster.event_date
-            );
-
-        if (dateDifference !== null) {
-            let dateScore = 0;
-
-            if (dateDifference === 0) {
-                dateScore = 1;
-            } else if (dateDifference <= 1) {
-                dateScore = 0.5;
-            }
-
-            weightedScore +=
-                dateScore * 5;
-
-            totalWeight += 5;
-        }
-
-        // 이슈 타입 비교
-        if (
-            analysis.issue_type &&
-            cluster.issue_type
-        ) {
-            const newIssueType =
-                normalizeIssueTypeForCluster(
-                    analysis.issue_type
-                );
-
-            const issueScore =
-                newIssueType === cluster.issue_type
-                    ? 1
-                    : 0;
-
-            weightedScore +=
-                issueScore * 5;
-
-            totalWeight += 5;
-        }
-        */
-        // 80점 만점 : 임베딩 60 사건명 10 장소 10 
-        let score = weightedScore; 
-
-
-
-        /* 80점 만점 테스트를 위해 임시 주석처리
-        let score =
-            (weightedScore / totalWeight) * 100;
-        */
-
-        /* 
-         * 의미는 비슷해도 핵심 장소나 발생 날짜가 명확하게 다르면
-         * 서로 다른 사건일 가능성이 높으므로 편입을 제한합니다.
-         */
-        /* 임시 주석처리 - 이 경우 클러스터링 과분할 문제 해소, 오병합문제는 증가시킴
-        if (
-            locationSimilarity !== null &&
-            locationSimilarity < 0.25
-        ) {
-            score = Math.min(score, 55);
-        }
-
-        if (
-            dateDifference !== null &&
-            dateDifference > 1
-        ) {
-            score = Math.min(score, 60);
-        }
-        */
+        if (!evaluation.mergeable) continue;
 
         console.log(
             "후보:",
             cluster.cluster_id,
             cluster.representative_title,
             "embedding:",
-            embeddingSimilarity.toFixed(3),
+            evaluation.embeddingSimilarity.toFixed(3),
             "최종점수:",
-            score.toFixed(2)
+            evaluation.score.toFixed(2)
         );
 
-        if (score > bestScore) {
-            bestScore = score;
+        if (evaluation.score > bestScore) {
+            bestScore = evaluation.score;
             bestCluster = cluster;
         }
     }
@@ -509,11 +343,10 @@ async function assignCluster({
     connection = null,
     articleEmbedding = undefined
 }) {
-    const embeddingText =
-        buildEmbeddingText(
-            title,
-            analysis.summary
-        );
+    const embeddingText = buildEmbeddingText(
+        title,
+        analysis.summary
+    );
 
     let newEmbedding = articleEmbedding;
 
@@ -532,18 +365,16 @@ async function assignCluster({
     }
 
     const clusterIssueType =
-        normalizeIssueTypeForCluster(
-            analysis.issue_type
-        );
+        normalizeIssueTypeForCluster(analysis.issue_type);
 
-    const clusterKey =
-        buildClusterKey(
-            analysis,
-            title,
-            clusterIssueType,
-            articleId
-        );
+    const clusterKey = buildClusterKey(
+        analysis,
+        title,
+        clusterIssueType,
+        articleId
+    );
 
+    // 1. 기존 일반 기사 편입 판정
     const {
         bestCluster,
         bestScore
@@ -555,24 +386,47 @@ async function assignCluster({
     );
 
     let clusterId;
+    let selectedCluster = bestCluster;
+    let specialMerge = false;
+    let specialMergeScore = null;
+    let pendingLinks = [];
 
+    // 2. 일반 편입 실패 시에만 전날 연결 및 특수 병합
     if (
-        bestCluster &&
-        bestScore >= CLUSTER_MATCH_THRESHOLD
+        !bestCluster ||
+        bestScore < CLUSTER_MATCH_THRESHOLD
     ) {
-        clusterId = bestCluster.cluster_id;
+        const precreation = await findPrecreationMatch({
+            analysis,
+            articleEmbedding: newEmbedding,
+            connection: connection ?? undefined
+        });
 
-        const oldCentroid =
-            safeParseEmbedding(
-                bestCluster.centroid_embedding
-            );
+        pendingLinks = precreation.previousLinks;
 
-        const newCentroid =
-            calculateUpdatedCentroid(
-                oldCentroid,
-                newEmbedding,
-                bestCluster.article_count
-            );
+        if (precreation.todayCluster) {
+            selectedCluster = precreation.todayCluster;
+            specialMerge = true;
+            specialMergeScore = precreation.mergeScore;
+        }
+    }
+
+    // 3. 일반 편입 또는 특수 병합 성공
+    if (
+        specialMerge ||
+        (bestCluster && bestScore >= CLUSTER_MATCH_THRESHOLD)
+    ) {
+        clusterId = selectedCluster.cluster_id;
+
+        const oldCentroid = safeParseEmbedding(
+            selectedCluster.centroid_embedding
+        );
+
+        const newCentroid = calculateUpdatedCentroid(
+            oldCentroid,
+            newEmbedding,
+            selectedCluster.article_count
+        );
 
         await clusterRepository.updateMatchedCluster(
             clusterId,
@@ -601,15 +455,15 @@ async function assignCluster({
             connection ?? undefined
         );
     } else {
+        // 4. 일반 편입과 특수 병합 모두 실패
         clusterId = await clusterRepository.createCluster(
             {
                 clusterKey,
                 representativeTitle: title,
                 representativeArticleId: articleId,
-                centroidEmbedding:
-                    newEmbedding
-                        ? JSON.stringify(newEmbedding)
-                        : null,
+                centroidEmbedding: newEmbedding
+                    ? JSON.stringify(newEmbedding)
+                    : null,
                 issueType: clusterIssueType,
                 riskScore
             },
@@ -617,20 +471,35 @@ async function assignCluster({
         );
     }
 
+    // 5. 연결 가능한 전날 클러스터 관계 저장
+    if (pendingLinks.length > 0) {
+        await persistPreviousLinks(
+            pendingLinks,
+            clusterId,
+            connection ?? undefined
+        );
+    }
+
     const clusterDecision = {
         article_id: articleId,
-        candidate_cluster_id:
-            bestCluster?.cluster_id ?? null,
-        candidate_cluster_title:
-            bestCluster?.representative_title ?? null,
-        similarity_score:
-            bestCluster
+        candidate_cluster_id: specialMerge
+            ? selectedCluster.cluster_id
+            : bestCluster?.cluster_id ?? null,
+        candidate_cluster_title: specialMerge
+            ? selectedCluster.representative_title
+            : bestCluster?.representative_title ?? null,
+        similarity_score: specialMerge
+            ? Number(specialMergeScore.toFixed(4))
+            : bestCluster
                 ? Number(bestScore.toFixed(4))
                 : null,
         max_score: 80,
-        threshold: CLUSTER_MATCH_THRESHOLD,
-        decision:
-            !bestCluster
+        threshold: specialMerge
+            ? 50
+            : CLUSTER_MATCH_THRESHOLD,
+        decision: specialMerge
+            ? "LINKED_MERGE"
+            : !bestCluster
                 ? "NO_CANDIDATE"
                 : bestScore >= CLUSTER_MATCH_THRESHOLD
                     ? "PASS"
@@ -651,7 +520,11 @@ async function assignCluster({
 
     return {
         clusterId,
-        clusterKey,
+        clusterKey:
+            selectedCluster &&
+            (specialMerge || bestScore >= CLUSTER_MATCH_THRESHOLD)
+                ? selectedCluster.cluster_key
+                : clusterKey,
         articleEmbedding: newEmbedding,
         clusterDecision
     };

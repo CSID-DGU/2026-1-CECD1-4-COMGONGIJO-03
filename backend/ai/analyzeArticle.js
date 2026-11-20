@@ -63,14 +63,66 @@ async function analyzeArticle(article) {
         );
     }
 
+    let analysis;
+
     try {
-        return JSON.parse(data.response);
+        analysis = JSON.parse(data.response);
     } catch (error) {
         throw new Error(
             `Ollama JSON 파싱 실패: ${data.response}`,
             { cause: error }
         );
     }
+
+    if (
+        !analysis ||
+        typeof analysis !== "object" ||
+        Array.isArray(analysis)
+    ) {
+        throw new Error("Ollama 분석 결과가 객체가 아닙니다.");
+    }
+
+    if (typeof analysis.target_related !== "boolean") {
+        throw new Error(
+            `잘못된 target_related: ${analysis.target_related}`
+        );
+    }
+
+    const riskFactors = [
+        "issue_severity",
+        "target_responsibility",
+        "norm_violation",
+        "similar_crisis_history"
+    ];
+
+    for (const key of riskFactors) {
+        const value = analysis[key];
+
+        if (
+            typeof value !== "number" &&
+            typeof value !== "string"
+        ) {
+            throw new Error(
+                `위험도 지표 누락 또는 자료형 오류: ${key}`
+            );
+        }
+
+        const number = Number(value);
+
+        if (
+            !Number.isFinite(number) ||
+            number < 0 ||
+            number > 1
+        ) {
+            throw new Error(
+                `위험도 지표 범위 오류: ${key}=${value}`
+            );
+        }
+
+        analysis[key] = Math.round(number * 10) / 10;
+    }
+
+    return analysis;
 }
 
 module.exports = analyzeArticle;

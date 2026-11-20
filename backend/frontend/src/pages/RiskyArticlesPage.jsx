@@ -24,7 +24,21 @@ export default function RiskyArticlesPage() {
       const response = await getRiskyArticles(minRisk);
       const nextArticles = response.data.articles || [];
       setArticles(nextArticles);
-      setSelectedArticle(nextArticles[0] || null);
+
+      if (nextArticles.length > 0) {
+        try {
+          const detailResponse = await getArticleById(
+            nextArticles[0].article_id
+          );
+
+          setSelectedArticle(detailResponse.data.article);
+        } catch {
+          setSelectedArticle(nextArticles[0]);
+        }
+      } else {
+        setSelectedArticle(null);
+      }
+
       setSampleMode(false);
       setSampleReason("");
     } catch (requestError) {
@@ -89,6 +103,7 @@ export default function RiskyArticlesPage() {
         </div>
         <ArticleDetailPanel
           article={selectedArticle}
+          feedbackEnabled={!sampleMode}
           hasAlert={Number(selectedArticle?.risk_score || 0) >= 0.7}
         />
       </section>

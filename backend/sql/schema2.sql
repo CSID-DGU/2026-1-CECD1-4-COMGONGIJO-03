@@ -63,7 +63,7 @@ CREATE TABLE article_analysis (
   target_mention_type VARCHAR(50),
   negative_impact_type VARCHAR(100),
 
-  -- AHP 설문을 기반으로 사용하는 위험도 5개 팩터
+-- 위험도 평가에 사용하는 4개 지표와 별도 언론사 영향력 지표
   media_influence FLOAT,
   issue_severity FLOAT,
   target_responsibility FLOAT,
@@ -73,6 +73,8 @@ CREATE TABLE article_analysis (
   risk_factor_reason TEXT,
 
   risk_score FLOAT,
+  risk_calibrated_factors JSON,
+  risk_model_version VARCHAR(64),
   cluster_key VARCHAR(500),
 
   analysis_status VARCHAR(20),
@@ -137,4 +139,17 @@ CREATE TABLE cluster_links (
   FOREIGN KEY (to_cluster_id)
     REFERENCES clusters(cluster_id)
     ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS risk_feedback (
+    article_id INT PRIMARY KEY,
+    factor_labels JSON,
+    overall_label DECIMAL(4,3),
+    updated_at DATETIME NOT NULL
+        DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (article_id)
+        REFERENCES articles(article_id)
+        ON DELETE CASCADE
 );

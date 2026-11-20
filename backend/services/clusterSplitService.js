@@ -1,6 +1,8 @@
 
 const repository = require("../repositories/clusterSplitRepository");
-const { evaluateClusterSimilarity } = require("./clusterMergeService");
+const {
+    evaluateLegacySimilarity: evaluateClusterSimilarity
+} = require("./clusterMergeService");
 const { cosineSimilarity } = require("../ai/embedding");
 
 const DEFAULT_SPLIT_THRESHOLD = 70;

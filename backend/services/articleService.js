@@ -1,8 +1,11 @@
 const analyzeArticle = require("../ai/analyzeArticle");
 const articleRepository = require("../repositories/articleRepository");
 const analysisRepository = require("../repositories/analysisRepository");
-const { calculateRiskScore } = require("./riskService");
-const { calculateSimilarCrisisHistory } = require("./riskFactorService");
+const {
+    calculateRiskScore,
+    calibrateFactors,
+    RISK_MODEL_VERSION
+} = require("./riskService");
 const {
     createClusterAlertIfNeeded,
     createLegacyAlertIfNeeded
@@ -60,13 +63,8 @@ async function processArticleAnalysis(article) {
         published_at: article.published_at
     });
 
-    analysis.similar_crisis_history =
-        await calculateSimilarCrisisHistory(
-            analysis,
-            article
-        );
-
     const riskScore = calculateRiskScore(analysis);
+    const calibratedFactors = calibrateFactors(analysis);
 
     // 스팸기사는 클러스터링 대상에서 제외합니다.
     let clusterId = null;
@@ -92,6 +90,8 @@ async function processArticleAnalysis(article) {
             clusterId,
             analysis,
             riskScore,
+            calibratedFactors,
+            riskModelVersion: RISK_MODEL_VERSION,
             clusterKey,
             articleEmbedding
         });

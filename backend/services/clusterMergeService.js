@@ -5,8 +5,12 @@ const {
     cosineSimilarity
 } = require("../ai/embedding");
 
+const {
+    evaluateMatch,
+    getCandidateEmbedding
+} = require("./clusterSimilarityService");
 
-const DEFAULT_MERGE_THRESHOLD = 80;
+const DEFAULT_MERGE_THRESHOLD = 55;
 
 // 사건 발생 날짜가 이보다 많이 차이나면
 // 강제로 병합에서 제외합니다.
@@ -414,7 +418,7 @@ function findRepresentativeArticle(
 // 병합 점수를 계산합니다.
 // 두 클러스터의 유사성을 계산합니다.
 // 병합과 날짜별 연결에서 공통으로 사용합니다.
-function evaluateClusterSimilarity(
+function evaluateLegacySimilarity(
     clusterA,
     clusterB
 ) {
@@ -695,6 +699,14 @@ function evaluateClusterSimilarity(
     };
 }
 
+function evaluateClusterSimilarity(clusterA, clusterB) {
+    return evaluateMatch(
+        clusterA,
+        clusterA.centroid_embedding,
+        clusterB,
+        clusterB.centroid_embedding
+    );
+}
 
 // 두 클러스터의 병합 가능 여부와
 // 병합 점수를 계산합니다.
@@ -903,7 +915,7 @@ async function mergeClustersByDate({
             ? Math.max(
                 0,
                 Math.min(
-                    100,
+                    80,
                     Number(threshold)
                 )
             )
@@ -976,11 +988,18 @@ async function mergeClustersByDate({
             }
 
 
-            const evaluation =
-                evaluateMerge(
-                    clusterA,
-                    clusterB
-                );
+            const evaluation = evaluateMerge(
+                {
+                    ...clusterA,
+                    centroid_embedding:
+                        await getCandidateEmbedding(clusterA)
+                },
+                {
+                    ...clusterB,
+                    centroid_embedding:
+                        await getCandidateEmbedding(clusterB)
+                }
+            );
 
 
             if (
@@ -1059,5 +1078,6 @@ async function mergeClustersByDate({
 
 module.exports = {
     mergeClustersByDate,
-    evaluateClusterSimilarity
+    evaluateClusterSimilarity,
+    evaluateLegacySimilarity
 };

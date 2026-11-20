@@ -6,6 +6,8 @@ const ANALYSIS_COLUMNS = `
     aa.sentiment_label,
     aa.sentiment_score,
     aa.risk_score,
+    aa.risk_calibrated_factors,
+    aa.risk_model_version,
     aa.analysis_status,
     aa.analyzed_at,
     aa.target_name,

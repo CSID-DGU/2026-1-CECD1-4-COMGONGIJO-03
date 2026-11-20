@@ -41,3 +41,15 @@ export const restoreArticleFromSpam = (articleId) =>
 
 export const getClusters = () =>
   apiClient.get("/clusters");
+
+// 위험도 피드백
+export const getRiskFeedback = (articleId) =>
+  apiClient.get(
+    `/articles/${articleId}/risk-feedback`
+  );
+
+export const putRiskFeedback = (articleId, payload) =>
+  apiClient.put(
+    `/articles/${articleId}/risk-feedback`,
+    payload
+  );

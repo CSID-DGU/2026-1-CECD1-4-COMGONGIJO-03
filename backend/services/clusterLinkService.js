@@ -4,12 +4,12 @@ const clusterLinkRepository =
     );
 
 const {
-    evaluateClusterSimilarity
-} = require(
-    "./clusterMergeService"
-);
+    evaluateMatch,
+    getCandidateEmbedding
+} = require("./clusterSimilarityService");
 
-const DEFAULT_LINK_THRESHOLD = 80;
+const DEFAULT_LINK_THRESHOLD = 55;
+const LINKED_MERGE_THRESHOLD = 50;
 const DEFAULT_LOOKBACK_DAYS = 2;
 
 function normalizeRequestedDate(
@@ -139,11 +139,12 @@ async function linkClustersByDate({
                 continue;
             }
 
-            const evaluation =
-                evaluateClusterSimilarity(
-                    clusterA,
-                    clusterB
-                );
+            const evaluation = evaluateMatch(
+                clusterA,
+                await getCandidateEmbedding(clusterA),
+                clusterB,
+                await getCandidateEmbedding(clusterB)
+            );
 
             if (
                 !evaluation.mergeable
@@ -223,6 +224,116 @@ async function linkClustersByDate({
     };
 }
 
+async function findPrecreationMatch({
+    analysis,
+    articleEmbedding,
+    connection
+}) {
+    const previousClusters = await clusterLinkRepository
+        .findYesterdayCandidates(connection);
+
+    const previousLinks = [];
+
+    // 전날 클러스터와 55점 기준 연결 판정
+    for (const previous of previousClusters) {
+        const reference = await getCandidateEmbedding(previous);
+
+        const evaluation = evaluateMatch(
+            analysis,
+            articleEmbedding,
+            previous,
+            reference
+        );
+
+        if (
+            !evaluation.mergeable ||
+            evaluation.score < DEFAULT_LINK_THRESHOLD
+        ) {
+            continue;
+        }
+
+        previousLinks.push({
+            fromClusterId: previous.cluster_id,
+            score: evaluation.score
+        });
+    }
+
+    if (previousLinks.length === 0) {
+        return {
+            previousLinks,
+            todayCluster: null,
+            mergeScore: null
+        };
+    }
+
+    // 연결된 전날 클러스터가 공유되는 오늘 클러스터 탐색
+    const todayCandidates = await clusterLinkRepository
+        .findTodayLinkedCandidates(
+            previousLinks.map(item => item.fromClusterId),
+            connection
+        );
+
+    let todayCluster = null;
+    let mergeScore = null;
+
+    // 50점 기준 특수 병합 판정
+    for (const cluster of todayCandidates) {
+        const reference = await getCandidateEmbedding(cluster);
+
+        const evaluation = evaluateMatch(
+            analysis,
+            articleEmbedding,
+            cluster,
+            reference
+        );
+
+        if (
+            !evaluation.mergeable ||
+            evaluation.score < LINKED_MERGE_THRESHOLD
+        ) {
+            continue;
+        }
+
+        if (
+            mergeScore === null ||
+            evaluation.score > mergeScore
+        ) {
+            todayCluster = cluster;
+            mergeScore = evaluation.score;
+        }
+    }
+
+    return {
+        previousLinks,
+        todayCluster,
+        mergeScore
+    };
+}
+
+async function persistPreviousLinks(
+    previousLinks,
+    toClusterId,
+    connection
+) {
+    for (const previous of previousLinks) {
+        if (
+            Number(previous.fromClusterId) ===
+            Number(toClusterId)
+        ) {
+            continue;
+        }
+
+        await clusterLinkRepository.upsertClusterLink({
+            fromClusterId: previous.fromClusterId,
+            toClusterId,
+            similarityScore: Number(
+                previous.score.toFixed(2)
+            ),
+            connection
+        });
+    }
+}
+
 async function getClusterLinks(
     clusterId
 ) {
@@ -236,5 +347,7 @@ async function getClusterLinks(
 
 module.exports = {
     linkClustersByDate,
+    findPrecreationMatch,
+    persistPreviousLinks,
     getClusterLinks
 };

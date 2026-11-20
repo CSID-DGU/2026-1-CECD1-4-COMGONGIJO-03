@@ -440,6 +440,7 @@ export default function DashboardPage({ refreshTick }) {
               isSpam={false}
               onSpamToggle={sampleMode ? undefined : handleMoveToSpam}
               spamLoading={spamLoading}
+              feedbackEnabled={!sampleMode}
             />
 
             {spamError && (
@@ -461,9 +462,6 @@ export default function DashboardPage({ refreshTick }) {
               <strong>{article.source || "출처 없음"}</strong>
             </div>
           ))}
-          <button className="feedbackButton" type="button">
-            피드백
-          </button>
         </section>
 
         <button className="backToListButton" type="button" onClick={() => setScreenMode("list")}>

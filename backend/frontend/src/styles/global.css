@@ -831,3 +831,57 @@ dd {
 .clusterMembers .timelineArticle {
   margin-bottom: 8px;
 }
+
+.riskFeedbackPanel {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #a5b4b8;
+  border-radius: 6px;
+}
+
+.riskFeedbackRows {
+  display: grid;
+  gap: 12px;
+}
+
+.riskFeedbackRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-bottom: 1px solid #d8e1e2;
+  padding: 8px 0;
+}
+
+.riskFeedbackRow > span {
+  color: #52616b;
+}
+
+.riskFeedbackActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.riskFeedbackActions button {
+  min-width: 35px;
+  padding: 6px;
+}
+
+.riskFeedbackActions span {
+  min-width: 52px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.riskFeedbackHint {
+  color: #52616b;
+  font-size: 0.875rem;
+}
+
+.riskFeedbackTotals {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
