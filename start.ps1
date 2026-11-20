@@ -41,7 +41,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # 5. Compose 설정 검증
-docker compose @composeArgs config --quiet
+docker compose @composeArgs up -d --build --remove-orphans
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Docker Compose configuration is invalid."
