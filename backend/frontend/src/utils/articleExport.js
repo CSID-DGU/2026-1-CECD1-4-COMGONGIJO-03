@@ -34,7 +34,7 @@ export async function createArticleWorkbook(articles) {
       article_id: article.article_id == null ? "" : String(article.article_id),
       title: article.title ?? "",
       source: article.source ?? "",
-      date: formatKoreanDate(article.published_at || article.created_at),
+      date: formatKoreanDate(article.published_at || article.collected_at || article.analyzed_at || article.created_at),
       sentiment_label: article.sentiment_label ?? "",
       risk_score: article.risk_score ?? "",
       summary: article.summary ?? "",

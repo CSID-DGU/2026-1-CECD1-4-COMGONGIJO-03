@@ -39,3 +39,9 @@ test("preserves missing fields, zero values and literal formula-like titles", as
     assert.ok(!sheet.getCell(`${column}2`).value);
   }
 });
+
+
+test("export date follows the same collection-date fallback as the article list", async () => {
+  const workbook = await createArticleWorkbook([{article_id: 1, collected_at: "2026-11-21 11:30:00"}]);
+  assert.equal(workbook.getWorksheet("기사 목록").getCell("D2").value, "2026-11-21 11:30:00 (KST)");
+});

@@ -1,4 +1,6 @@
 import EmptyState from "./EmptyState";
+import SentimentBadge from "./SentimentBadge";
+import { riskEmphasisClass } from "../utils/articlePresentation";
 
 function formatDate(value) {
   if (!value) return "날짜 없음";
@@ -51,7 +53,7 @@ export default function ArticleList({ articles, selectedArticleId, onSelect }) {
           <div className="articleList">
             {items.map((article) => (
               <button
-                className={`articleItem ${
+                className={`articleItem ${riskEmphasisClass(article.risk_score)} ${
                   selectedArticleId === article.article_id ? "isSelected" : ""
                 }`}
                 key={`${article.article_id}-${article.analysis_id || "raw"}`}
@@ -64,8 +66,8 @@ export default function ArticleList({ articles, selectedArticleId, onSelect }) {
                 </div>
                 <div className="articleMeta">
                   <span>{article.source || "출처 없음"}</span>
-                  <span>{article.sentiment_label || "분석 전"}</span>
-                  <span>risk_score {scoreLabel(article.risk_score)}</span>
+                  <SentimentBadge label={article.sentiment_label} />
+                  <span>위험도 {scoreLabel(article.risk_score)}</span>
                 </div>
               </button>
             ))}

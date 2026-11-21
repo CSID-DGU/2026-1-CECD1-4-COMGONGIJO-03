@@ -1,6 +1,7 @@
 const sentimentOptions = [
   { value: "all", label: "전체" },
   { value: "positive", label: "긍정" },
+  { value: "neutral", label: "중립" },
   { value: "negative", label: "부정" },
   { value: "empathy", label: "공감" }
 ];
@@ -36,7 +37,7 @@ export default function Toolbar({
         </select>
       </label>
 
-      <div className="sentimentButtons" aria-label="반응 필터">
+      <div className="sentimentButtons" aria-label="감성 필터">
         {sentimentOptions.map((option) => (
           <button
             className={sentimentFilter === option.value ? "active" : ""}

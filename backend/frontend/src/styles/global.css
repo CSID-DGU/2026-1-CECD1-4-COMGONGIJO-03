@@ -885,3 +885,107 @@ dd {
   gap: 8px;
   margin: 14px 0;
 }
+
+/* 주의: 위험도 0.4 이상 */
+.timelineArticle.riskEmphasisWarning,
+.articleItem.riskEmphasisWarning {
+  border-color: #d97706;
+  border-left: 6px solid #d97706;
+  background: #fff3dd;
+}
+
+/* 위험: 위험도 0.6 이상 */
+.timelineArticle.riskEmphasisHigh,
+.articleItem.riskEmphasisHigh {
+  border-color: #ae3540;
+  border-left: 6px solid #ae3540;
+  background: #fff0f0;
+}
+
+/* 마우스 올렸을 때 */
+.timelineArticle.riskEmphasisWarning:hover,
+.articleItem.riskEmphasisWarning:hover,
+.articleItem.riskEmphasisWarning.isSelected {
+  background: #ffe4ad;
+}
+
+.timelineArticle.riskEmphasisHigh:hover,
+.articleItem.riskEmphasisHigh:hover,
+.articleItem.riskEmphasisHigh.isSelected {
+  background: #ffd2d7;
+}
+
+/* Keep the badge as one unit; avoid applying articleMeta styles to its children. */
+.articleMeta > span:not(.sentimentBadge) {
+  border: 1px solid #1b252a;
+  border-radius: 999px;
+  background: #edf7f6;
+  color: #1b252a;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 5px 8px;
+}
+
+.articleMeta span.sentimentBadge,
+.timelineArticle .sentimentBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  padding: 4px 8px;
+  border: 1px solid #a6b3b6;
+  border-radius: 999px;
+  background: #f0f3f4;
+  color: #45545b;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.articleMeta .sentimentBadge > span {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.articleMeta .sentimentBadge--positive,
+.timelineArticle .sentimentBadge--positive {
+  border-color: #82b9a4;
+  color: #176244;
+  background: #e5f5ec;
+}
+
+.articleMeta .sentimentBadge--negative,
+.timelineArticle .sentimentBadge--negative {
+  border-color: #d8a0a2;
+  color: #8b2732;
+  background: #fdebee;
+}
+
+.articleMeta .sentimentBadge--neutral,
+.timelineArticle .sentimentBadge--neutral {
+  border-color: #a5adb6;
+  color: #44515a;
+  background: #eff2f5;
+}
+
+.articleMeta .sentimentBadge--empathy,
+.timelineArticle .sentimentBadge--empathy {
+  border-color: #b6a2cc;
+  color: #624b85;
+  background: #f2ebfa;
+}
+
+/* Standalone cards include source, sentiment, risk, and cluster status. */
+.timelineArticle dl {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 640px) {
+  .timelineArticle dl {
+    grid-template-columns: 1fr;
+  }
+}

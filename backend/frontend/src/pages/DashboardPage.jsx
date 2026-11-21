@@ -5,6 +5,8 @@ import ErrorState from "../components/ErrorState";
 import LoadingState from "../components/LoadingState";
 import SampleModeBanner from "../components/SampleModeBanner";
 import Toolbar from "../components/Toolbar";
+import SentimentBadge from "../components/SentimentBadge";
+import { matchesSentiment, riskEmphasisClass } from "../utils/articlePresentation";
 import { downloadArticleExcel } from "../utils/articleExport";
 import {kstDateKey,buildDisplayItems,flattenDisplayItems} from "../utils/articleView";
 import {
@@ -52,14 +54,6 @@ const emptyArticleForm = {
 function isSocialArticle(article) {
   const source = String(article.source || article.url || "").toLowerCase();
   return socialSourcePatterns.some((pattern) => source.includes(pattern));
-}
-
-function matchesSentiment(article, filter) {
-  if (filter === "all") return true;
-  const value = String(article.sentiment_label || "").toLowerCase();
-  if (filter === "positive") return value.includes("긍정") || value.includes("positive");
-  if (filter === "negative") return value.includes("부정") || value.includes("negative");
-  return value.includes("공감") || value.includes("empathy");
 }
 
 function getDateValue(article) {
@@ -291,6 +285,7 @@ export default function DashboardPage({ refreshTick }) {
     try {
       await downloadArticleExcel(flattenDisplayItems(displayItems), { selectedDate, activeTab });
     } catch (requestError) {
+      console.error("엑셀 다운로드 처리 실패:", requestError);
       setExportError(`엑셀 다운로드 실패: ${getErrorMessage(requestError)}`);
     } finally {
       setExporting(false);
@@ -576,7 +571,7 @@ export default function DashboardPage({ refreshTick }) {
 
                 return (
                   <button
-                    className="timelineArticle"
+                    className={`timelineArticle ${riskEmphasisClass(article.risk_score)}`}
                     key={`article-${article.article_id}`}
                     type="button"
                     onClick={() => handleSelectArticle(article)}
@@ -594,6 +589,14 @@ export default function DashboardPage({ refreshTick }) {
                       <div>
                         <dt>출처</dt>
                         <dd>{article.source || "-"}</dd>
+                      </div>
+                      <div>
+                        <dt>감성</dt>
+                        <dd><SentimentBadge label={article.sentiment_label} /></dd>
+                      </div>
+                      <div>
+                        <dt>위험도</dt>
+                        <dd>{scoreLabel(article.risk_score)}</dd>
                       </div>
                       <div>
                         <dt>상태</dt>
@@ -630,13 +633,15 @@ export default function DashboardPage({ refreshTick }) {
                         toggleCluster(cluster.cluster_id)
                       }
                     >
-                      조건 일치 {members.length}건 / 전체 {cluster.article_count}건
+                      {query.trim() || sentimentFilter !== "all"
+                        ? `검색·필터 결과 ${members.length}건`
+                        : `현재 날짜 ${members.length}건`} / 클러스터 전체 {cluster.article_count ?? cluster.articles?.length ?? members.length}건
                       {expanded ? " ▲" : " ▼"}
                     </button>
                   </div>
 
                   <button
-                    className="timelineArticle"
+                    className={`timelineArticle ${riskEmphasisClass(representative.risk_score)}`}
                     type="button"
                     onClick={() =>
                       handleSelectArticle(representative)
@@ -663,11 +668,11 @@ export default function DashboardPage({ refreshTick }) {
                       <div>
                         <dt>감성</dt>
                         <dd>
-                          {representative.sentiment_label || "분석 전"}
+                          <SentimentBadge label={representative.sentiment_label} />
                         </dd>
                       </div>
                       <div>
-                        <dt>risk_score</dt>
+                        <dt>위험도</dt>
                         <dd>{scoreLabel(representative.risk_score)}</dd>
                       </div>
                     </dl>
@@ -677,7 +682,7 @@ export default function DashboardPage({ refreshTick }) {
                     <div className="clusterMembers">
                       {otherArticles.map((article) => (
                         <button
-                          className="timelineArticle"
+                          className={`timelineArticle ${riskEmphasisClass(article.risk_score)}`}
                           key={`member-${article.article_id}`}
                           type="button"
                           onClick={() =>
@@ -701,7 +706,11 @@ export default function DashboardPage({ refreshTick }) {
                               <dd>{article.source || "-"}</dd>
                             </div>
                             <div>
-                              <dt>risk_score</dt>
+                              <dt>감성</dt>
+                              <dd><SentimentBadge label={article.sentiment_label} /></dd>
+                            </div>
+                            <div>
+                              <dt>위험도</dt>
                               <dd>{scoreLabel(article.risk_score)}</dd>
                             </div>
                           </dl>
@@ -716,10 +725,6 @@ export default function DashboardPage({ refreshTick }) {
         </div>
       </section>
 
-
-      <button className="topicButton" type="button" onClick={() => setScreenMode("detail")}>
-        &lt; 목록 &gt;
-      </button>
 
       <section className="createBand">
         <div>
