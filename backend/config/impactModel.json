@@ -1,0 +1,24 @@
+{
+  "version": "impact-initial-20261121-v2",
+  "unknownMediaFallback": 0.3,
+  "initialWeights": {
+    "risk_score": 0.25,
+    "public_relevance": 0.25,
+    "title_sensationalism": 0.25,
+    "media_influence": 0.25
+  },
+  "observedWeights": {
+    "news_count": 0.25,
+    "source_count": 0.25,
+    "duration_hours": 0.25,
+    "first_24h_count": 0.25
+  },
+  "observedCaps": {
+    "news_count": 30,
+    "source_count": 10,
+    "duration_hours": 168,
+    "first_24h_count": 12
+  },
+  "observationDays": 7,
+  "normalizationVersion": "observed-provisional-20261121-v2"
+}

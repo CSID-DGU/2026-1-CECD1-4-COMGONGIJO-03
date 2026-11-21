@@ -8,6 +8,7 @@ async function insertFullAnalysis({
     clusterKey,
     calibratedFactors,
     riskModelVersion,
+    impact,
     articleEmbedding
 }) {
     const [result] = await db.query(
@@ -30,6 +31,12 @@ async function insertFullAnalysis({
             target_mention_type,
             negative_impact_type,
             media_influence,
+            public_relevance,
+            title_sensationalism,
+            initial_spread_score,
+            initial_impact_score,
+            media_influence_origin,
+            impact_model_version,
             issue_severity,
             target_responsibility,
             norm_violation,
@@ -47,6 +54,7 @@ async function insertFullAnalysis({
             ?, ?, ?, ?, ?, ?, ?,
             ?,
             ?, ?, ?,
+            ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?,
             ?, NOW()
@@ -83,7 +91,13 @@ async function insertFullAnalysis({
             analysis.target_mention_type,
             analysis.negative_impact_type,
 
-            analysis.media_influence,
+            impact.media_influence,
+            impact.public_relevance,
+            impact.title_sensationalism,
+            impact.initial_spread_score,
+            impact.initial_impact_score,
+            impact.media_influence_origin,
+            impact.impact_model_version,
             analysis.issue_severity,
             analysis.target_responsibility,
             analysis.norm_violation,

@@ -3,6 +3,8 @@ const articleController = require("../controllers/articleController");
 const riskFeedbackController =
     require("../controllers/riskFeedbackController");
 
+const impactController = require("../controllers/impactController");
+
 const router = express.Router();
 
 router.post("/", articleController.createArticle);
@@ -21,6 +23,8 @@ router.put(
     "/:article_id/risk-feedback",
     riskFeedbackController.put
 );
+router.get("/:article_id/impact-feedback", impactController.getFeedback);
+router.put("/:article_id/impact-feedback", impactController.putFeedback);
 router.get("/:article_id", articleController.getArticleById);
 
 // 스팸기사 전환 및 복구

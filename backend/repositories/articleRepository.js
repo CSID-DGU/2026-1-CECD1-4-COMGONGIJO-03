@@ -2,6 +2,7 @@ const db = require("../db");
 
 const ANALYSIS_COLUMNS = `
     aa.analysis_id,
+    aa.cluster_id,
     aa.summary,
     aa.sentiment_label,
     aa.sentiment_score,
@@ -22,6 +23,12 @@ const ANALYSIS_COLUMNS = `
     aa.target_mention_type,
     aa.negative_impact_type,
     aa.media_influence,
+    aa.public_relevance,
+    aa.title_sensationalism,
+    aa.initial_spread_score,
+    aa.initial_impact_score,
+    aa.media_influence_origin,
+    aa.impact_model_version,
     aa.issue_severity,
     aa.target_responsibility,
     aa.norm_violation,

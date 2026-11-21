@@ -53,3 +53,20 @@ export const putRiskFeedback = (articleId, payload) =>
     `/articles/${articleId}/risk-feedback`,
     payload
   );
+// 파급력 피드백 및 관측 데이터
+export const getImpactFeedback = (articleId) =>
+  apiClient.get(`/articles/${articleId}/impact-feedback`);
+export const putImpactFeedback = (articleId, payload) =>
+  apiClient.put(`/articles/${articleId}/impact-feedback`, payload);
+export const getClusterImpact = (clusterId, includeLinked = false) =>
+  apiClient.get(`/clusters/${clusterId}/impact`, {
+    params: { include_linked: includeLinked }
+  });
+export const saveClusterImpactSnapshot = (clusterId, includeLinked = false) =>
+  apiClient.post(`/clusters/${clusterId}/impact/snapshot`, { include_linked: includeLinked });
+export const confirmClusterImpactSnapshot = (clusterId, includeLinked = false, acceptEstimated = false) =>
+  apiClient.post(`/clusters/${clusterId}/impact/confirm`, {
+    confirm: true,
+    include_linked: includeLinked,
+    accept_estimated_dates: acceptEstimated
+  });

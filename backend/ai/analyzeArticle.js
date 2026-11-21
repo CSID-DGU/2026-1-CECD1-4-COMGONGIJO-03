@@ -122,6 +122,22 @@ async function analyzeArticle(article) {
         analysis[key] = Math.round(number * 10) / 10;
     }
 
+    // 파급력 지표는 기존 저장 기사/테스트 스텁과의 호환을 위해 누락시
+    // null로 남깁니다. 누락을 0점으로 위장하지 않습니다.
+    for (const key of ["public_relevance", "title_sensationalism", "media_influence"]) {
+        const value = analysis[key];
+        if (value === undefined || value === null || value === "") {
+            analysis[key] = null;
+            continue;
+        }
+        const number = Number(value);
+        if (!Number.isFinite(number) || number < 0 || number > 1) {
+            analysis[key] = null;
+            continue;
+        }
+        analysis[key] = Math.round(number * 10) / 10;
+    }
+
     return analysis;
 }
 

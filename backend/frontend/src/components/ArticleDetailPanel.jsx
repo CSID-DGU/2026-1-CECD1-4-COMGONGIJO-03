@@ -1,5 +1,6 @@
 import EmptyState from "./EmptyState";
 import RiskFeedbackPanel from "./RiskFeedbackPanel";
+import ImpactPanel from "./ImpactPanel";
 
 function formatDateTime(value) {
   if (!value) return "-";
@@ -130,6 +131,7 @@ export default function ArticleDetailPanel({
         article={article}
         disabled={!feedbackEnabled}
       />
+      <ImpactPanel article={article} disabled={!feedbackEnabled} />
       {onSpamToggle && (
         <div className="detailTopControls">
           <button

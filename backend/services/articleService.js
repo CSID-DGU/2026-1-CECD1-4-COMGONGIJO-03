@@ -11,6 +11,8 @@ const {
     createLegacyAlertIfNeeded
 } = require("./alertService");
 const db = require("../db");
+const { calculateInitialImpact } = require("./impactService");
+const impactRepository = require("../repositories/impactRepository");
 const {
     assignCluster,
     recalculateClusterAfterSpamChange
@@ -65,6 +67,12 @@ async function processArticleAnalysis(article) {
 
     const riskScore = calculateRiskScore(analysis);
     const calibratedFactors = calibrateFactors(analysis);
+    const mediaOverride = article.source
+        ? await impactRepository.getMediaOverride(article.source)
+        : null;
+    const impact = calculateInitialImpact({
+        riskScore, analysis, source: article.source, mediaOverride
+    });
 
     // 스팸기사는 클러스터링 대상에서 제외합니다.
     let clusterId = null;
@@ -92,6 +100,7 @@ async function processArticleAnalysis(article) {
             riskScore,
             calibratedFactors,
             riskModelVersion: RISK_MODEL_VERSION,
+            impact,
             clusterKey,
             articleEmbedding
         });
@@ -113,6 +122,7 @@ async function processArticleAnalysis(article) {
         clusterId,
         clusterKey,
         riskScore,
+        initialImpact: impact,
         alertCreated,
         alertId,
         analysis
