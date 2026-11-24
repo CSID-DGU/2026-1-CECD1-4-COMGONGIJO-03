@@ -29,6 +29,7 @@ async function findLinkCandidates({
 
             aa.target_name,
             aa.event_name,
+            aa.event_name_embedding,
             aa.event_date,
             aa.event_location,
             aa.event_entities
@@ -47,11 +48,16 @@ async function findLinkCandidates({
                 FROM article_analysis aa2
 
                 WHERE
-                    aa2.cluster_id =
-                        c.cluster_id
+                    aa2.article_id = c.representative_article_id
+                    AND aa2.cluster_id = c.cluster_id
+                    AND COALESCE(
+                        aa2.spam_override,
+                        aa2.target_related
+                    ) = 1
 
                 ORDER BY
-                    aa2.analyzed_at DESC
+                    aa2.analyzed_at DESC,
+                    aa2.analysis_id DESC
 
                 LIMIT 1
             )
@@ -93,7 +99,8 @@ async function findLinkCandidates({
 
     return rows;
 }
-async function findYesterdayCandidates(connection = db) {
+async function findYesterdayCandidates(clusterDate, connection = db) {
+    if (!clusterDate) throw new Error("clusterDate required for previous-day links");
     const [rows] = await connection.query(`
         SELECT
             c.cluster_id,
@@ -105,6 +112,7 @@ async function findYesterdayCandidates(connection = db) {
             c.article_count,
             c.first_detected,
             aa.event_name,
+            aa.event_name_embedding,
             aa.event_location,
             aa.article_embedding
         FROM clusters c
@@ -126,15 +134,16 @@ async function findYesterdayCandidates(connection = db) {
         WHERE c.cluster_status = 'active'
           AND c.article_count > 0
           AND DATE(c.first_detected) =
-              DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+              DATE_SUB(?, INTERVAL 1 DAY)
         ORDER BY c.cluster_id
-    `);
+    `, [clusterDate]);
 
     return rows;
 }
 
 async function findTodayLinkedCandidates(
     previousIds,
+    clusterDate,
     connection = db
 ) {
     if (!previousIds.length) return [];
@@ -154,6 +163,7 @@ async function findTodayLinkedCandidates(
             c.article_count,
             c.first_detected,
             aa.event_name,
+            aa.event_name_embedding,
             aa.event_location,
             aa.article_embedding
         FROM cluster_links cl
@@ -176,11 +186,11 @@ async function findTodayLinkedCandidates(
             )
         WHERE cl.link_type = 'same_event'
           AND cl.from_cluster_id IN (${placeholders})
-          AND DATE(c.first_detected) = CURDATE()
+          AND DATE(c.first_detected) = ?
           AND c.cluster_status = 'active'
           AND c.article_count > 0
         ORDER BY c.cluster_id
-    `, previousIds);
+    `, [...previousIds, clusterDate]);
 
     return rows;
 }

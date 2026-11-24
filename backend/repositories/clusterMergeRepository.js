@@ -26,6 +26,7 @@ async function findMergeCandidates(date = null) {
 
             aa.target_name,
             aa.event_name,
+            aa.event_name_embedding,
             aa.event_date,
             aa.event_location,
             aa.event_entities

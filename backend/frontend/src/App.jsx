@@ -5,11 +5,13 @@ import AlertsPage from "./pages/AlertsPage";
 import SpamArticlesPage from "./pages/SpamArticlesPage";
 import CrawlerPage from "./pages/CrawlerPage";
 import NotifySettingsPage from "./pages/NotifySettingsPage";
+import RiskTrainingPage from "./pages/RiskTrainingPage";
 import { getAlerts } from "./services/articles";
 
 const navItems = [
   { id: "dashboard", label: "기사 목록" },
   { id: "risky", label: "위험 기사" },
+  { id: "risk-training", label: "위험도 학습" },
   { id: "alerts", label: "알림" },
   { id: "spam", label: "스팸기사함" },
   { id: "crawler", label: "뉴스 수집" },
@@ -181,6 +183,7 @@ export default function App() {
       <main>
         {activePage === "dashboard" && <DashboardPage refreshTick={refreshTick} />}
         {activePage === "risky" && <RiskyArticlesPage refreshTick={refreshTick} />}
+        {activePage === "risk-training" && <RiskTrainingPage />}
         {activePage === "alerts" && <AlertsPage refreshTick={refreshTick} />}
         {activePage === "spam" && <SpamArticlesPage refreshTick={refreshTick} />}
         {/* 다른 화면으로 이동하더라도 진행 중인 SSE 수집을 유지합니다. */}

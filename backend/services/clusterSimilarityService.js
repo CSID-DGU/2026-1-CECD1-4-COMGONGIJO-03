@@ -51,6 +51,7 @@ function textSimilarity(a, b) {
 }
 
 // 기사 편입과 연결, 병합에서 공통으로 사용하는 80점 평가식
+
 function evaluateMatch(
     analysis,
     articleEmbedding,
@@ -78,12 +79,13 @@ function evaluateMatch(
         };
     }
 
-    const similarity = Math.max(
+    // 1. 제목 + 요약 임베딩: 최대 40점
+    const articleSimilarity = Math.max(
         0,
         cosineSimilarity(current, reference)
     );
 
-    if (!Number.isFinite(similarity)) {
+    if (!Number.isFinite(articleSimilarity)) {
         return {
             score: 0,
             mergeable: false,
@@ -91,15 +93,38 @@ function evaluateMatch(
         };
     }
 
-    let score = similarity * 60;
+    const articlePoints = articleSimilarity * 40;
 
-    if (analysis?.event_name && cluster?.event_name) {
-        score += textSimilarity(
-            analysis.event_name,
-            cluster.event_name
-        ) * 10;
+    // 2. 사건명 임베딩: 최대 30점
+    const nameA = parseEmbedding(
+        analysis?.event_name_embedding
+    );
+
+    const nameB = parseEmbedding(
+        cluster?.event_name_embedding
+    );
+
+    let eventNameSimilarity = null;
+
+    if (
+        nameA &&
+        nameB &&
+        nameA.length > 0 &&
+        nameA.length === nameB.length
+    ) {
+        const value = cosineSimilarity(nameA, nameB);
+
+        if (Number.isFinite(value)) {
+            eventNameSimilarity = Math.max(0, value);
+        }
     }
 
+    const eventNamePoints =
+        eventNameSimilarity === null
+            ? 0
+            : eventNameSimilarity * 30;
+
+    // 3. 장소: 최대 10점, 기존 결측 처리 유지
     const locationA = String(
         analysis?.event_location || ""
     ).trim();
@@ -108,17 +133,37 @@ function evaluateMatch(
         cluster?.event_location || ""
     ).trim();
 
-    score += locationA && locationB
-        ? textSimilarity(locationA, locationB) * 10
-        : 5;
+    const locationSimilarity =
+        locationA && locationB
+            ? textSimilarity(locationA, locationB)
+            : null;
 
+    const locationPoints =
+        locationSimilarity === null
+            ? 5
+            : locationSimilarity * 10;
+
+    // 4. 최종 점수
     return {
-        score,
+        score:
+            articlePoints +
+            eventNamePoints +
+            locationPoints,
+
         mergeable: true,
         reason: null,
-        embeddingSimilarity: similarity
+
+        embeddingSimilarity: articleSimilarity,
+        articlePoints,
+
+        eventNameSimilarity,
+        eventNamePoints,
+
+        locationSimilarity,
+        locationPoints
     };
 }
+
 
 async function getCandidateEmbedding(cluster) {
     let embedding = parseEmbedding(

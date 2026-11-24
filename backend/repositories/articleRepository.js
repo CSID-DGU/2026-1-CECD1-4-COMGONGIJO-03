@@ -181,6 +181,8 @@ async function findByIdWithAnalysis(articleId) {
         LEFT JOIN article_analysis aa
             ON a.article_id = aa.article_id
         WHERE a.article_id = ?
+        ORDER BY aa.analysis_id DESC
+        LIMIT 1
         `,
         [articleId]
     );
@@ -214,7 +216,7 @@ async function findUnanalyzedArticles(
             WHERE aa.article_id = a.article_id
         )
         ${exclusionSql}
-        ORDER BY a.collected_at ASC, a.article_id ASC
+        ORDER BY COALESCE(a.published_at, a.collected_at) ASC, a.article_id ASC
         LIMIT ?
         `,
         [...ids, limit]
@@ -255,6 +257,7 @@ async function findSpamStateForUpdate(connection, articleId) {
             COALESCE(aa.spam_override, aa.target_related) AS is_normal,
 
             a.title,
+            a.published_at,
 
             aa.summary,
             aa.risk_score,

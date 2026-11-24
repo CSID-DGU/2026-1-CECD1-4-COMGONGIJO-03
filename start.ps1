@@ -1,83 +1,71 @@
+param(
+    [switch]$Stop
+)
+
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-$composeArgs = @(
-    "--env-file", ".env.docker",
-    "-f", "compose.yaml",
-    "-f", "compose.gpu.yaml"
-)
-
-# 1. Docker 설치 확인
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Host "Docker is not installed."
-    exit 1
+    throw "Docker CLI was not found. Install Docker Desktop with Docker Compose."
 }
 
-# 2. Docker 엔진 확인
 docker info *> $null
-
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Docker Desktop is not running."
-    exit 1
+    throw "Docker engine is unavailable. Start Docker Desktop and wait until it is ready."
 }
 
-# 3. 환경변수 파일 확인
-if (-not (Test-Path ".env.docker")) {
-    Write-Host ".env.docker is missing."
-    exit 1
+if (-not (Test-Path -LiteralPath ".env.docker")) {
+    throw "Copy .env.docker.example to .env.docker and set the database credentials."
 }
 
-# 4. NVIDIA GPU 확인
-if (-not (Get-Command nvidia-smi -ErrorAction SilentlyContinue)) {
-    Write-Host "NVIDIA GPU driver was not found."
-    exit 1
+$composeArgs = @("--env-file", ".env.docker", "-f", "compose.yaml")
+
+if ($Stop) {
+    docker compose @composeArgs stop
+    exit $LASTEXITCODE
 }
 
-nvidia-smi *> $null
+$envLines = Get-Content -LiteralPath ".env.docker"
 
+foreach ($key in @("DOCKER_DB_USER", "DOCKER_DB_PASSWORD", "DOCKER_MYSQL_ROOT_PASSWORD")) {
+    $assignment = $envLines | Where-Object { $_ -match "^\s*$key\s*=" } | Select-Object -Last 1
+
+    if (-not $assignment -or $assignment -match '=\s*(?:["'']?CHANGE_ME["'']?)?\s*(?:#.*)?$') {
+        throw "Set $key in .env.docker before starting."
+    }
+}
+
+docker compose @composeArgs config --quiet
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "NVIDIA GPU is unavailable."
-    exit 1
+    throw "Compose configuration failed. Check .env.docker and Compose support."
 }
 
-# 5. Compose 설정 검증
-docker compose @composeArgs up -d --build --remove-orphans
-
+docker compose @composeArgs up -d --wait --wait-timeout 180 db ollama
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Docker Compose configuration is invalid."
-    exit 1
+    throw "DB or Ollama failed to start. Check Docker resources and Compose logs."
 }
 
-# 6. 서비스 실행
-Write-Host "Starting Docker services..."
-
-docker compose @composeArgs up -d --build
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Failed to start Docker services."
-    exit 1
-}
-
-# 7. Ollama 모델 준비
 foreach ($model in @("qwen3:8b", "bge-m3")) {
-    Write-Host "Checking model: $model"
-
-    docker compose @composeArgs exec -T ollama ollama show $model 2>$null
+    docker compose @composeArgs exec -T ollama ollama show $model *> $null
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Downloading model: $model"
+        Write-Host "Downloading Ollama model $model. This may take several minutes."
 
         docker compose @composeArgs exec -T ollama ollama pull $model
 
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "Failed to download model: $model"
-            exit 1
+            throw "Could not prepare model $model. Check the network and free disk space."
         }
     }
 }
 
-Write-Host ""
-Write-Host "Startup completed."
+docker compose @composeArgs up -d --build --wait --wait-timeout 120 backend frontend
+if ($LASTEXITCODE -ne 0) {
+    throw "Web or backend did not become ready. Use docker compose --env-file .env.docker logs --tail 80 backend frontend db."
+}
+
 Write-Host "Web: http://localhost:8080"
+Write-Host "Phone on the same Wi-Fi: http://<this-PC-IPv4>:8080"
+Write-Host "Stop and keep data: powershell -ExecutionPolicy Bypass -File .\start.ps1 -Stop"
 
 docker compose @composeArgs ps

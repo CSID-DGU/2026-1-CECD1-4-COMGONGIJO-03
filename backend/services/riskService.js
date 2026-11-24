@@ -76,6 +76,7 @@ function calculateRiskScore(analysis, config = model) {
 }
 
 module.exports = {
+    BASE_MODEL: model,
     RISK_FACTORS,
     RISK_WEIGHTS,
     RISK_MODEL_VERSION: model.version,

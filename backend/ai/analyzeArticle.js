@@ -1,5 +1,8 @@
 
-const buildAnalysisPrompt = require("./buildAnalysisPrompt");
+const buildAnalysisPrompt =
+    process.env.ANALYSIS_PROMPT_VARIANT === "experimental"
+        ? require("./buildAnalysisPrompt.experimental")
+        : require("./buildAnalysisPrompt");
 
 async function analyzeArticle(article) {
     const prompt = buildAnalysisPrompt(article);
@@ -11,7 +14,7 @@ async function analyzeArticle(article) {
             headers: {
                 "Content-Type": "application/json"
             },
-            signal: AbortSignal.timeout(120000),
+            signal: AbortSignal.timeout(180000),
             body: JSON.stringify({
                 model: "qwen3:8b",
                 prompt,
@@ -20,8 +23,8 @@ async function analyzeArticle(article) {
                 options: {
                     temperature: 0,
                     top_p: 0.1,
-                    num_ctx: 8192,
-                    num_predict: 3072
+                    num_ctx: 28672,
+                    num_predict: 8192
                 }
             })
         }
@@ -138,6 +141,20 @@ async function analyzeArticle(article) {
         analysis[key] = Math.round(number * 10) / 10;
     }
 
+    const eventDate = analysis.event_date;
+
+    if (typeof eventDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
+        analysis.event_date = null;
+    } else {
+        const parsed = new Date(`${eventDate}T00:00:00.000Z`);
+
+        if (
+            Number.isNaN(parsed.getTime()) ||
+            parsed.toISOString().slice(0, 10) !== eventDate
+        ) {
+            analysis.event_date = null;
+        }
+    }
     return analysis;
 }
 

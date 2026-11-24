@@ -153,7 +153,6 @@ async function crawlOnce(keywords, opts = {}) {
             const article = await enrichItem(item, keyword);
             stats.total++;
             stats[article.crawl_status]++;
-            seen.add(id);
 
             const tag = { full: "✅", partial: "⚠️ ", rss_only: "❌" }[article.crawl_status];
             console.log(`  ${tag} [${article.source}] ${article.title.slice(0, 40)} (본문 ${article.content_length}자, ${article.extract_method})`);
@@ -165,6 +164,7 @@ async function crawlOnce(keywords, opts = {}) {
                     article.save_status = r.status;
                     article.article_id = r.data.article_id || null;
                     stats[r.result]++;
+                    if (r.result === "saved" || r.result === "duplicate") seen.add(id);
                     if (r.result === "duplicate") console.log("     ↳ 이미 저장된 기사");
                     else if (r.result === "failed") console.log(`     ↳ 저장 실패 (HTTP ${r.status})`, r.data.message || "");
                     else console.log("     ↳ 저장 완료 (AI 분석 대기열에 등록)");

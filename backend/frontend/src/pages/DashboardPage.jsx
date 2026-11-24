@@ -218,6 +218,11 @@ export default function DashboardPage({ refreshTick }) {
         );
         setAlerts(alertsResponse.data.alerts || []);
         setClusters(clustersResponse.data.clusters || []);
+        if (sampleMode) {
+          setSampleMode(false);
+          setSampleReason("");
+          setSelectedArticle(null);
+        }
       } catch (error) {
         console.error("기사 자동 갱신 실패:", error);
       }
@@ -279,7 +284,7 @@ export default function DashboardPage({ refreshTick }) {
   const selectedDateIndex = dateKeys.indexOf(selectedDate);
 
   const handleExcelDownload = async () => {
-    if (exporting || !dateArticles.length) return;
+    if (sampleMode || exporting || !dateArticles.length) return;
     setExporting(true);
     setExportError("");
     try {
@@ -516,7 +521,7 @@ export default function DashboardPage({ refreshTick }) {
           <button
             className="secondaryButton"
             type="button"
-            disabled={exporting || !dateArticles.length}
+            disabled={sampleMode || exporting || !dateArticles.length}
             onClick={handleExcelDownload}
             aria-busy={exporting}
           >
@@ -524,7 +529,9 @@ export default function DashboardPage({ refreshTick }) {
           </button>
         </div>
       </section>
-      <p>엑셀에는 현재 날짜·검색·감성 조건에 맞는 기사와 접힌 묶음의 해당 기사를 표시 순서대로 포함합니다.</p>
+      <p>{sampleMode
+        ? "실제 기사 목록이 연결되면 엑셀을 다운로드할 수 있습니다."
+        : "엑셀에는 현재 날짜·검색·감성 조건에 맞는 기사와 접힌 묶음의 해당 기사를 표시 순서대로 포함합니다."}</p>
       {exportError && <p className="errorText" role="alert">{exportError}</p>}
 
       <section className="controlBand sketchControlBand">

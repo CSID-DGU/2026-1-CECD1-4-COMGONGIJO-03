@@ -36,6 +36,7 @@ function riskLevel(score) {
  */
 function buildMessage(alert) {
     const level = riskLevel(Number(alert.risk_score) || 0);
+    const newCluster = alert.notification_type === "new_cluster";
     const dashboardLink = DASHBOARD_URL ? `${DASHBOARD_URL}/?page=alerts&article=${alert.article_id}` : "";
     const lines = [
         `${alert.source ? `[${alert.source}] ` : ""}${alert.title || ""}`.trim(),
@@ -48,9 +49,11 @@ function buildMessage(alert) {
 
     return {
         topic: NTFY_TOPIC,
-        title: `${level.emoji} [${level.label}] ${alert.alert_topic || "위험 기사 감지"}`,
+        title: newCluster
+            ? `🆕 [신규 클러스터] ${alert.alert_topic || "새 사건 감지"}`
+            : `${level.emoji} [${level.label}] ${alert.alert_topic || "위험 기사 감지"}`,
         message: lines.join("\n").slice(0, 1000),
-        priority: level.priority,
+        priority: newCluster ? 3 : level.priority,
         tags: ["rotating_light"],
         ...(isPublicUrl(dashboardLink) ? { click: dashboardLink } : {}),
         ...(actions.length ? { actions } : {}),

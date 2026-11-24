@@ -1,9 +1,10 @@
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || "bge-m3:latest";
 
-async function getEmbedding(text) {
+async function getEmbedding(text, { signal } = {}) {
     const response = await fetch(`${OLLAMA_BASE_URL}/api/embed`, {
         method: "POST",
+        signal,
         headers: {
             "Content-Type": "application/json"
         },

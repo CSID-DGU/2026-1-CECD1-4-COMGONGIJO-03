@@ -4,8 +4,8 @@ import apiClient from "../services/apiClient";
 const SETUP_STEPS = [
   "휴대폰에 ntfy 앱 설치 (Play 스토어 / App Store 에서 'ntfy' 검색)",
   "앱에서 + 버튼 → 토픽 이름 입력 → Subscribe (서버 주소는 기본값 그대로)",
-  "backend/.env 에 NTFY_TOPIC=토픽이름 추가 (앱에 입력한 이름과 똑같이)",
-  "서버를 다시 실행 (npm run dev 를 껐다가 다시 실행)"
+  "Docker는 .env.docker, 로컬 개발은 backend/.env에 같은 NTFY_TOPIC을 설정",
+  "서버를 다시 실행하고 이 화면에서 테스트 알림 발송"
 ];
 
 function errorMessage(err) {
@@ -59,7 +59,7 @@ export default function NotifySettingsPage() {
         <ol className="cwFlow">
           <li><strong>뉴스 수집</strong><span>'저장 + AI 분석' 또는 자동 수집</span></li>
           <li><strong>AI 위험도 분석</strong><span>기사별 위험도 계산</span></li>
-          <li><strong>위험 알림 생성</strong><span>위험도 0.6 이상 · 같은 사건은 1번만</span></li>
+          <li><strong>신규 사건 감지</strong><span>새 클러스터가 생성되면 알림을 등록</span></li>
           <li><strong>휴대폰 알림</strong><span>ntfy 앱으로 푸시</span></li>
         </ol>
       </section>

@@ -9,7 +9,8 @@ async function insertFullAnalysis({
     calibratedFactors,
     riskModelVersion,
     impact,
-    articleEmbedding
+    articleEmbedding,
+    eventNameEmbedding
 }) {
     const [result] = await db.query(
         `
@@ -27,6 +28,7 @@ async function insertFullAnalysis({
             event_entities,
             event_keywords,
             article_embedding,
+            event_name_embedding,
             target_related,
             target_mention_type,
             negative_impact_type,
@@ -52,7 +54,7 @@ async function insertFullAnalysis({
         VALUES (
             ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?, ?, ?,
-            ?,
+            ?, ?,
             ?, ?, ?,
             ?, ?, ?, ?, ?, ?,
             ?, ?, ?, ?, ?, ?,
@@ -85,6 +87,10 @@ async function insertFullAnalysis({
                 ? JSON.stringify(
                     articleEmbedding
                 )
+                : null,
+                
+            eventNameEmbedding
+                ? JSON.stringify(eventNameEmbedding)
                 : null,
 
             analysis.target_related,

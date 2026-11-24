@@ -1,5 +1,6 @@
 
 const repository = require("../repositories/clusterSplitRepository");
+const { createClusterAlertIfNeeded } = require("./alertService");
 const {
     evaluateLegacySimilarity: evaluateClusterSimilarity
 } = require("./clusterMergeService");
@@ -93,6 +94,7 @@ function getMetadata(groupArticles, sourceCluster) {
 
     const timestamps = groupArticles
         .map(article =>
+            parseTimestamp(article.published_at) ??
             parseTimestamp(article.collected_at) ??
             parseTimestamp(article.analyzed_at)
         )
@@ -543,7 +545,7 @@ async function splitOneCluster(clusterId, threshold, dryRun) {
         return describePlan(plan);
     }
 
-    return repository.withLockedSnapshot(
+    const result = await repository.withLockedSnapshot(
         clusterId,
         async (connection, snapshot) => {
             const plan = buildSplitPlan(snapshot, threshold);
@@ -566,6 +568,33 @@ async function splitOneCluster(clusterId, threshold, dryRun) {
             };
         }
     );
+
+    // The DB transaction is committed above. Notify new clusters from split.
+    if (result.status === 'split') {
+        for (const created of result.newClusters || []) {
+            const group = (result.groups || []).find(g =>
+                g.representativeArticleId === created.representativeArticleId
+            );
+            try {
+                await createClusterAlertIfNeeded({
+                    articleId: created.representativeArticleId,
+                    clusterId: created.clusterId,
+                    createdNewCluster: true,
+                    forceNewNotification: true,
+                    analysis: {
+                        target_related: true,
+                        event_name: group?.representativeTitle || '분할 생성 클러스터',
+                        summary: '기존 클러스터가 분할되어 새로운 클러스터로 생성되었습니다.'
+                    },
+                    riskScore: group?.maxRiskScore || 0,
+                    title: group?.representativeTitle
+                });
+            } catch (error) {
+                console.error('[CLUSTER SPLIT ALERT]', error.message);
+            }
+        }
+    }
+    return result;
 }
 
 // API에서 호출하는 진입점입니다.

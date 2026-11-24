@@ -1,11 +1,12 @@
 const analyzeArticle = require("../ai/analyzeArticle");
+const { embedEventName } = require("./eventNameEmbeddingService");
 const articleRepository = require("../repositories/articleRepository");
 const analysisRepository = require("../repositories/analysisRepository");
 const {
-    calculateRiskScore,
     calibrateFactors,
-    RISK_MODEL_VERSION
+    scoreCalibratedFactors
 } = require("./riskService");
+const { getActiveRiskModel } = require("./riskModelService");
 const {
     createClusterAlertIfNeeded,
     createLegacyAlertIfNeeded
@@ -65,8 +66,14 @@ async function processArticleAnalysis(article) {
         published_at: article.published_at
     });
 
-    const riskScore = calculateRiskScore(analysis);
-    const calibratedFactors = calibrateFactors(analysis);
+    const eventNameEmbedding = await embedEventName(analysis.event_name);
+    
+    // 클러스터링에서도 사건명 벡터를 사용하도록 전달 
+    analysis.event_name_embedding = eventNameEmbedding;
+
+    const riskModel = await getActiveRiskModel();
+    const calibratedFactors = calibrateFactors(analysis, riskModel);
+    const riskScore = scoreCalibratedFactors(calibratedFactors, riskModel);
     const mediaOverride = article.source
         ? await impactRepository.getMediaOverride(article.source)
         : null;
@@ -78,16 +85,19 @@ async function processArticleAnalysis(article) {
     let clusterId = null;
     let clusterKey = null;
     let articleEmbedding = null;
+    let createdNewCluster = false;
 
     if (analysis.target_related === true) {
         const clusterResult = await assignCluster({
             articleId,
             analysis,
             title: article.title,
-            riskScore
+            riskScore,
+            publishedAt: article.published_at
         });
 
         clusterId = clusterResult.clusterId;
+        createdNewCluster = clusterResult.createdNewCluster === true;
         clusterKey = clusterResult.clusterKey;
         articleEmbedding = clusterResult.articleEmbedding ?? null;
     }
@@ -99,10 +109,11 @@ async function processArticleAnalysis(article) {
             analysis,
             riskScore,
             calibratedFactors,
-            riskModelVersion: RISK_MODEL_VERSION,
+            riskModelVersion: riskModel.version,
             impact,
             clusterKey,
-            articleEmbedding
+            articleEmbedding,
+            eventNameEmbedding
         });
 
     const {
@@ -111,8 +122,10 @@ async function processArticleAnalysis(article) {
     } = await createClusterAlertIfNeeded({
         articleId,
         clusterId,
+        createdNewCluster,
         analysis,
-        riskScore
+        riskScore,
+        title: article.title
     });
 
     return {
@@ -298,6 +311,7 @@ async function restoreArticleFromSpam(articleId) {
             title: article.title,
             riskScore: Number(article.risk_score) || 0,
             connection,
+            publishedAt: article.published_at,
             articleEmbedding: articleEmbedding ?? undefined
         });
         
@@ -324,6 +338,22 @@ async function restoreArticleFromSpam(articleId) {
         );
 
         await connection.commit();
+
+        // Spam restoration can also create a new cluster. Notify after COMMIT.
+        if (clusterResult.createdNewCluster) {
+            try {
+                await createClusterAlertIfNeeded({
+                    articleId,
+                    clusterId: clusterResult.clusterId,
+                    createdNewCluster: true,
+                    analysis: { ...analysis, target_related: true },
+                    riskScore: Number(article.risk_score) || 0,
+                    title: article.title
+                });
+            } catch (notifyError) {
+                console.error('[CLUSTER ALERT AFTER RESTORE]', notifyError.message);
+            }
+        }
 
         return {
             success: true,

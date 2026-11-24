@@ -1,10 +1,32 @@
 {
-  "version": "ahp-4-v1",
+  "version": "event-bias-bd2d3e16",
   "factors": {
-    "issue_severity": { "a": 1, "b": 0, "p": 1 },
-    "target_responsibility": { "a": 1, "b": 0, "p": 1 },
-    "norm_violation": { "a": 1, "b": 0, "p": 1 },
-    "similar_crisis_history": { "a": 1, "b": 0, "p": 1 }
+    "issue_severity": {
+      "a": 1,
+      "b": 0,
+      "p": 1
+    },
+    "target_responsibility": {
+      "a": 1,
+      "b": -0.08211806,
+      "p": 1
+    },
+    "norm_violation": {
+      "a": 1,
+      "b": -0.01753472,
+      "p": 1
+    },
+    "similar_crisis_history": {
+      "a": 1,
+      "b": 0.03506944,
+      "p": 1
+    }
+  },
+  "ahp_weights": {
+    "issue_severity": 0.23739121316975986,
+    "target_responsibility": 0.28709237705777496,
+    "norm_violation": 0.36541889483065954,
+    "similar_crisis_history": 0.1100975149418056
   },
   "weights": {
     "issue_severity": 0.23739121316975986,

@@ -2,7 +2,8 @@ const db = require("../db");
 
 // 오늘 생성되거나 갱신된 클러스터 후보와
 // 클러스터링 비교에 필요한 대표값/기사 정보를 조회합니다.
-async function findRecentCandidates(connection = db) {
+async function findRecentCandidates(clusterDate, connection = db) {
+    if (!clusterDate) throw new Error("clusterDate required for candidate lookup");
     const [rows] = await connection.query(
         `
         SELECT
@@ -17,6 +18,7 @@ async function findRecentCandidates(connection = db) {
             c.max_risk_score,
 
             aa.event_name,
+            aa.event_name_embedding,
             aa.event_date,
             aa.event_location,
             aa.event_entities,
@@ -39,12 +41,12 @@ async function findRecentCandidates(connection = db) {
                 LIMIT 1
             )
 
-        WHERE c.last_detected >= CURDATE()
+        WHERE DATE(c.first_detected) = ?
           AND c.cluster_status = 'active'
           AND c.article_count > 0
 
         ORDER BY c.last_detected DESC
-        `
+        `, [clusterDate]
     );
 
     return rows;
@@ -55,18 +57,19 @@ async function findRecentCandidates(connection = db) {
 async function updateMatchedCluster(
     clusterId,
     riskScore,
+    detectedAt,
     connection = db
 ) {
     await connection.query(
         `
         UPDATE clusters
         SET
-            last_detected = NOW(),
+            last_detected = GREATEST(last_detected, ?),
             article_count = article_count + 1,
             max_risk_score = GREATEST(max_risk_score, ?)
         WHERE cluster_id = ?
         `,
-        [riskScore, clusterId]
+        [detectedAt, riskScore, clusterId]
     );
 }
 
@@ -104,7 +107,8 @@ async function createCluster({
     representativeArticleId,
     centroidEmbedding,
     issueType,
-    riskScore
+    riskScore,
+    detectedAt
 }, connection = db) {
     const [result] = await connection.query(
         `
@@ -120,7 +124,7 @@ async function createCluster({
             max_risk_score,
             cluster_status
         )
-        VALUES (?, ?, ?, ?, ?, NOW(), NOW(), 1, ?, 'active')
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 'active')
         `,
         [
             clusterKey,
@@ -128,6 +132,8 @@ async function createCluster({
             representativeArticleId,
             centroidEmbedding,
             issueType,
+            detectedAt,
+            detectedAt,
             riskScore
         ]
     );
@@ -215,6 +221,7 @@ async function findArticlesByClusterId(clusterId, connection = db) {
 
             aa.summary,
             aa.event_name,
+            aa.event_name_embedding,
             aa.event_date,
             aa.event_location,
             aa.event_entities,

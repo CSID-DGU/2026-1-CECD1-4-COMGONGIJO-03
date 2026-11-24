@@ -53,6 +53,8 @@ export const putRiskFeedback = (articleId, payload) =>
     `/articles/${articleId}/risk-feedback`,
     payload
   );
+export const getRiskTraining = () => apiClient.get("/risk-training");
+export const runRiskTraining = () => apiClient.post("/risk-training");
 // 파급력 피드백 및 관측 데이터
 export const getImpactFeedback = (articleId) =>
   apiClient.get(`/articles/${articleId}/impact-feedback`);

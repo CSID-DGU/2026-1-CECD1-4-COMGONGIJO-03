@@ -227,10 +227,11 @@ async function linkClustersByDate({
 async function findPrecreationMatch({
     analysis,
     articleEmbedding,
+    clusterDate,
     connection
 }) {
     const previousClusters = await clusterLinkRepository
-        .findYesterdayCandidates(connection);
+        .findYesterdayCandidates(clusterDate, connection);
 
     const previousLinks = [];
 
@@ -270,6 +271,7 @@ async function findPrecreationMatch({
     const todayCandidates = await clusterLinkRepository
         .findTodayLinkedCandidates(
             previousLinks.map(item => item.fromClusterId),
+            clusterDate,
             connection
         );
 

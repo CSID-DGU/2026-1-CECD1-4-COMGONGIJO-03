@@ -1,4 +1,5 @@
 const clusterRepository = require("../repositories/clusterRepository");
+const { formatDate, clusterTimestamp } = require("../utils/clusterDate");
 const { getEmbedding, cosineSimilarity } = require("../ai/embedding");
 
 const {
@@ -21,7 +22,7 @@ function subscribeClusterDecisions(listener) {
     return () => clusterDecisionListeners.delete(listener);
 }
 
-const CLUSTER_MATCH_THRESHOLD = 55; // 기존 70/100에서 임시 변경
+const CLUSTER_MATCH_THRESHOLD = 50; // 기존 70/100에서 임시 변경
 
 async function getCachedEmbedding(text) {
     if (!text) return null;
@@ -232,19 +233,25 @@ function calculateUpdatedCentroid(
     );
 }
 
+
 async function findBestCluster(
     analysis,
     title,
     newEmbedding,
-    connection = null
+    connection = null,
+    clusterDate = null
 ) {
     const candidateClusters =
         await clusterRepository.findRecentCandidates(
+            clusterDate,
             connection ?? undefined
         );
 
     let bestCluster = null;
     let bestScore = 0;
+
+    // 비교한 후보들의 상세 점수를 수집합니다.
+    const comparisons = [];
 
     for (const cluster of candidateClusters) {
         const referenceEmbedding =
@@ -257,17 +264,40 @@ async function findBestCluster(
             referenceEmbedding
         );
 
-        if (!evaluation.mergeable) continue;
+        comparisons.push({
+            clusterId: cluster.cluster_id,
+            clusterTitle: cluster.representative_title,
 
-        console.log(
-            "후보:",
-            cluster.cluster_id,
-            cluster.representative_title,
-            "embedding:",
-            evaluation.embeddingSimilarity.toFixed(3),
-            "최종점수:",
-            evaluation.score.toFixed(2)
-        );
+            // 양쪽의 실제 LLM 사건명을 기록합니다.
+            articleEventName:
+                analysis?.event_name ?? null,
+            clusterEventName:
+                cluster.event_name ?? null,
+
+            // 제목 + 요약 임베딩
+            articleSimilarity:
+                evaluation.embeddingSimilarity ?? null,
+            articlePoints:
+                evaluation.articlePoints ?? 0,
+
+            // 사건명 임베딩
+            eventNameSimilarity:
+                evaluation.eventNameSimilarity ?? null,
+            eventNamePoints:
+                evaluation.eventNamePoints ?? 0,
+
+            // 장소
+            locationSimilarity:
+                evaluation.locationSimilarity ?? null,
+            locationPoints:
+                evaluation.locationPoints ?? 0,
+
+            // 최종 점수
+            totalPoints: evaluation.score,
+            reason: evaluation.reason
+        });
+
+        if (!evaluation.mergeable) continue;
 
         if (evaluation.score > bestScore) {
             bestScore = evaluation.score;
@@ -275,11 +305,29 @@ async function findBestCluster(
         }
     }
 
+    // 일반 클러스터 편입이 실패했을 때 상세 로그를 출력합니다.
+    if (
+        !bestCluster ||
+        bestScore < CLUSTER_MATCH_THRESHOLD
+    ) {
+        console.log(
+            "[CLUSTER DIRECT FAIL]",
+            JSON.stringify({
+                articleTitle: title,
+                articleEventName:
+                    analysis?.event_name ?? null,
+                threshold: CLUSTER_MATCH_THRESHOLD,
+                candidates: comparisons
+            })
+        );
+    }
+
     return {
         bestCluster,
         bestScore
     };
 }
+
 
 // centroid와 가장 가까운 실제 기사를 대표기사(medoid)로 선택합니다.
 async function findMedoid(
@@ -341,8 +389,11 @@ async function assignCluster({
     title,
     riskScore,
     connection = null,
-    articleEmbedding = undefined
+    articleEmbedding = undefined,
+    publishedAt = null
 }) {
+    const clusterDate = formatDate(publishedAt);
+    const detectedAt = clusterTimestamp(publishedAt);
     const embeddingText = buildEmbeddingText(
         title,
         analysis.summary
@@ -382,11 +433,13 @@ async function assignCluster({
         analysis,
         title,
         newEmbedding,
-        connection
+        connection,
+        clusterDate
     );
 
     let clusterId;
     let selectedCluster = bestCluster;
+    let createdNewCluster = false;
     let specialMerge = false;
     let specialMergeScore = null;
     let pendingLinks = [];
@@ -399,6 +452,7 @@ async function assignCluster({
         const precreation = await findPrecreationMatch({
             analysis,
             articleEmbedding: newEmbedding,
+            clusterDate,
             connection: connection ?? undefined
         });
 
@@ -431,6 +485,7 @@ async function assignCluster({
         await clusterRepository.updateMatchedCluster(
             clusterId,
             riskScore,
+            detectedAt,
             connection ?? undefined
         );
 
@@ -456,6 +511,7 @@ async function assignCluster({
         );
     } else {
         // 4. 일반 편입과 특수 병합 모두 실패
+        createdNewCluster = true;
         clusterId = await clusterRepository.createCluster(
             {
                 clusterKey,
@@ -465,7 +521,8 @@ async function assignCluster({
                     ? JSON.stringify(newEmbedding)
                     : null,
                 issueType: clusterIssueType,
-                riskScore
+                riskScore,
+                detectedAt
             },
             connection ?? undefined
         );
@@ -504,8 +561,16 @@ async function assignCluster({
                 : bestScore >= CLUSTER_MATCH_THRESHOLD
                     ? "PASS"
                     : "FAIL",
-        assigned_cluster_id: clusterId
+        assigned_cluster_id: clusterId,
+        cluster_date: clusterDate,
+        created_new_cluster: createdNewCluster
     };
+
+    // 클러스터 최종 배정 결과 출력
+    console.log(
+        "[CLUSTER DECISION]",
+        JSON.stringify(clusterDecision)
+    );
 
     for (const listener of clusterDecisionListeners) {
         try {
@@ -520,6 +585,7 @@ async function assignCluster({
 
     return {
         clusterId,
+        createdNewCluster,
         clusterKey:
             selectedCluster &&
             (specialMerge || bestScore >= CLUSTER_MATCH_THRESHOLD)

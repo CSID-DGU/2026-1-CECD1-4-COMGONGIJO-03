@@ -839,6 +839,23 @@ dd {
   border-radius: 6px;
 }
 
+.riskOverallForm,
+.riskOverallForm label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.riskOverallForm input {
+  width: 6rem;
+  padding: 8px;
+}
+
+.riskFeedbackPanel dd {
+  overflow-wrap: anywhere;
+}
+
 .riskFeedbackRows {
   display: grid;
   gap: 12px;
