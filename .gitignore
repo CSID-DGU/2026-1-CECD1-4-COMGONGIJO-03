@@ -11,3 +11,5 @@ test/Crawling/node_modules/
 # Local verification reports, database exports, and generated builds
 audit-output/
 backend/crawler/.seen.json
+logs/
+release/
